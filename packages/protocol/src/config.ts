@@ -6,13 +6,17 @@ const strict = { additionalProperties: false } as const;
 const unitInterval = { minimum: 0, maximum: 1 } as const;
 const HexColorSchema = Type.String({ pattern: '^#[0-9A-Fa-f]{6}$' });
 const commonProfileFields = {
-	color: HexColorSchema,
 	hardwareIntensity: Type.Number(unitInterval),
+};
+const animatedColorFields = {
+	startColor: HexColorSchema,
+	endColor: HexColorSchema,
 };
 
 export const StaticProfileSchema = Type.Object(
 	{
 		...commonProfileFields,
+		color: HexColorSchema,
 		effect: Type.Literal('static'),
 		intensity: Type.Number(unitInterval),
 	},
@@ -22,7 +26,20 @@ export const StaticProfileSchema = Type.Object(
 export const BreatheProfileSchema = Type.Object(
 	{
 		...commonProfileFields,
+		...animatedColorFields,
 		effect: Type.Literal('breathe'),
+		minimumIntensity: Type.Number(unitInterval),
+		maximumIntensity: Type.Number(unitInterval),
+		periodMs: Type.Integer({ minimum: 250, maximum: 10_000 }),
+	},
+	strict,
+);
+
+export const StreamProfileSchema = Type.Object(
+	{
+		...commonProfileFields,
+		...animatedColorFields,
+		effect: Type.Literal('stream'),
 		minimumIntensity: Type.Number(unitInterval),
 		maximumIntensity: Type.Number(unitInterval),
 		periodMs: Type.Integer({ minimum: 250, maximum: 10_000 }),
@@ -33,6 +50,7 @@ export const BreatheProfileSchema = Type.Object(
 export const PulseProfileSchema = Type.Object(
 	{
 		...commonProfileFields,
+		...animatedColorFields,
 		effect: Type.Literal('pulse'),
 		minimumIntensity: Type.Number(unitInterval),
 		maximumIntensity: Type.Number(unitInterval),
@@ -45,6 +63,7 @@ export const PulseProfileSchema = Type.Object(
 export const VisualProfileSchema = Type.Union([
 	StaticProfileSchema,
 	BreatheProfileSchema,
+	StreamProfileSchema,
 	PulseProfileSchema,
 ]);
 
@@ -69,6 +88,7 @@ export const AgentGlowConfigSchema = Type.Object(
 		profiles: Type.Object(
 			{
 				working: VisualProfileSchema,
+				tool_use: VisualProfileSchema,
 				waiting_permission: VisualProfileSchema,
 				success: VisualProfileSchema,
 				error: VisualProfileSchema,

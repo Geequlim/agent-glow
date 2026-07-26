@@ -12,8 +12,9 @@ const HARDWARE_TEST_ENVIRONMENT = 'AGENT_GLOW_HARDWARE_TEST';
 const deviceKind = readDeviceKind();
 const states = [
 	{ state: 'idle', aura: '系统原始状态', slash: '系统原始状态' },
-	{ state: 'paused', aura: '低亮度暖白', slash: 'Bounce 亮度 30%' },
-	{ state: 'working', aura: '蓝紫慢呼吸', slash: 'Loading 亮度 70%' },
+	{ state: 'paused', aura: '低亮度暖白', slash: 'Bounce 亮度 20%' },
+	{ state: 'working', aura: '蓝紫慢呼吸', slash: 'Loading 亮度 60%' },
+	{ state: 'tool_use', aura: '青蓝持续数据流', slash: 'BitStream 亮度 90%' },
 	{
 		state: 'waiting_permission',
 		aura: '琥珀快呼吸',

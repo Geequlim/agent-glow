@@ -1,6 +1,7 @@
 import type { SemanticState } from '@agent-glow/protocol/semantic-state';
 
 import type { RgbColor, StaticVisualState } from './backend.js';
+import { interpolateColorLinear } from './color-space.js';
 
 export interface StaticVisualEffect {
 	readonly color: RgbColor;
@@ -11,7 +12,8 @@ export interface StaticVisualEffect {
 }
 
 export interface BreatheVisualEffect {
-	readonly color: RgbColor;
+	readonly startColor: RgbColor;
+	readonly endColor: RgbColor;
 	readonly effect: 'breathe';
 	readonly hardwareIntensity: number;
 	readonly maximumIntensity: number;
@@ -20,8 +22,20 @@ export interface BreatheVisualEffect {
 	readonly semanticState: SemanticState;
 }
 
+export interface StreamVisualEffect {
+	readonly startColor: RgbColor;
+	readonly endColor: RgbColor;
+	readonly effect: 'stream';
+	readonly hardwareIntensity: number;
+	readonly maximumIntensity: number;
+	readonly minimumIntensity: number;
+	readonly periodMs: number;
+	readonly semanticState: SemanticState;
+}
+
 export interface PulseVisualEffect {
-	readonly color: RgbColor;
+	readonly startColor: RgbColor;
+	readonly endColor: RgbColor;
 	readonly durationMs: number;
 	readonly effect: 'pulse';
 	readonly hardwareIntensity: number;
@@ -31,7 +45,11 @@ export interface PulseVisualEffect {
 	readonly semanticState: SemanticState;
 }
 
-export type SemanticVisualEffect = StaticVisualEffect | BreatheVisualEffect | PulseVisualEffect;
+export type SemanticVisualEffect =
+	| StaticVisualEffect
+	| BreatheVisualEffect
+	| StreamVisualEffect
+	| PulseVisualEffect;
 
 const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 	idle: {
@@ -44,24 +62,36 @@ const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 	paused: {
 		effect: 'static',
 		color: { red: 255, green: 244, blue: 214 },
-		hardwareIntensity: 0.3,
-		intensity: 0.25,
+		hardwareIntensity: 0.18,
+		intensity: 0.18,
 		semanticState: 'paused',
 	},
 	working: {
 		effect: 'breathe',
-		color: { red: 88, green: 101, blue: 242 },
-		hardwareIntensity: 0.7,
-		minimumIntensity: 0.08,
-		maximumIntensity: 1,
-		periodMs: 2200,
+		startColor: { red: 88, green: 101, blue: 242 },
+		endColor: { red: 88, green: 101, blue: 242 },
+		hardwareIntensity: 0.65,
+		minimumIntensity: 0.22,
+		maximumIntensity: 0.72,
+		periodMs: 2800,
 		semanticState: 'working',
+	},
+	tool_use: {
+		effect: 'stream',
+		startColor: { red: 0, green: 184, blue: 217 },
+		endColor: { red: 88, green: 101, blue: 242 },
+		hardwareIntensity: 0.8,
+		minimumIntensity: 0.3,
+		maximumIntensity: 0.9,
+		periodMs: 1000,
+		semanticState: 'tool_use',
 	},
 	success: {
 		effect: 'pulse',
-		color: { red: 53, green: 199, blue: 89 },
-		durationMs: 900,
-		hardwareIntensity: 0.9,
+		startColor: { red: 53, green: 199, blue: 89 },
+		endColor: { red: 53, green: 199, blue: 89 },
+		durationMs: 1000,
+		hardwareIntensity: 0.75,
 		minimumIntensity: 0.15,
 		maximumIntensity: 1,
 		pulseCount: 1,
@@ -69,18 +99,20 @@ const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 	},
 	waiting_permission: {
 		effect: 'breathe',
-		color: { red: 255, green: 159, blue: 28 },
-		hardwareIntensity: 1,
-		minimumIntensity: 0.15,
-		maximumIntensity: 1,
-		periodMs: 900,
+		startColor: { red: 255, green: 159, blue: 28 },
+		endColor: { red: 255, green: 159, blue: 28 },
+		hardwareIntensity: 0.85,
+		minimumIntensity: 0.2,
+		maximumIntensity: 0.9,
+		periodMs: 1000,
 		semanticState: 'waiting_permission',
 	},
 	error: {
 		effect: 'pulse',
-		color: { red: 255, green: 59, blue: 48 },
-		durationMs: 1000,
-		hardwareIntensity: 1,
+		startColor: { red: 255, green: 59, blue: 48 },
+		endColor: { red: 255, green: 59, blue: 48 },
+		durationMs: 1200,
+		hardwareIntensity: 0.9,
 		minimumIntensity: 0.15,
 		maximumIntensity: 1,
 		pulseCount: 2,
@@ -109,13 +141,24 @@ export function renderVisualFrame(
 	const progress =
 		effect.effect === 'breathe'
 			? (1 - Math.cos(((elapsed % effect.periodMs) / effect.periodMs) * Math.PI * 2)) / 2
-			: Math.sin(Math.min(1, elapsed / effect.durationMs) * Math.PI * effect.pulseCount) ** 2;
+			: effect.effect === 'stream'
+				? streamProgress((elapsed % effect.periodMs) / effect.periodMs)
+				: Math.sin(
+						Math.min(1, elapsed / effect.durationMs) * Math.PI * effect.pulseCount,
+					) ** 2;
 	return {
-		color: effect.color,
+		color: interpolateColorLinear(effect.startColor, effect.endColor, progress),
 		hardwareIntensity: effect.hardwareIntensity,
 		intensity:
 			effect.minimumIntensity +
 			(effect.maximumIntensity - effect.minimumIntensity) * progress,
 		semanticState: effect.semanticState,
 	};
+}
+
+function streamProgress(phase: number): number {
+	if (phase < 0.65) return 1 - phase / 0.65;
+	if (phase < 0.82) return 0;
+	const rise = (phase - 0.82) / 0.18;
+	return rise * rise;
 }

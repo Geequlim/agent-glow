@@ -16,6 +16,7 @@ const JsonRpcIdSchema = Type.Union([
 	Type.String({ minLength: 1, maxLength: 64 }),
 ]);
 const EmptyParamsSchema = Type.Object({}, strict);
+const PreviewStateSchema = Type.Exclude(SemanticStateSchema, Type.Literal('idle'));
 const SourceSessionSchema = {
 	source: Type.String({ minLength: 1, maxLength: PROTOCOL_LIMITS.maxSourceLength }),
 	sessionId: Type.String({ minLength: 1, maxLength: PROTOCOL_LIMITS.maxSessionIdLength }),
@@ -49,6 +50,7 @@ export const DeviceConfigurationUpdateParamsSchema = Type.Object(
 	strict,
 );
 export const ConfigUpdateParamsSchema = Type.Object({ config: AgentGlowConfigSchema }, strict);
+export const PreviewSetParamsSchema = Type.Object({ state: PreviewStateSchema }, strict);
 
 export const RpcRequestSchema = Type.Union([
 	Type.Object(
@@ -136,6 +138,42 @@ export const RpcRequestSchema = Type.Union([
 		{
 			jsonrpc: Type.Literal('2.0'),
 			id: JsonRpcIdSchema,
+			method: Type.Literal('preview.start'),
+			params: PreviewSetParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('preview.update'),
+			params: PreviewSetParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('preview.stop'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('preview.getFrame'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
 			method: Type.Literal('event.emit'),
 			params: EventEmitParamsSchema,
 		},
@@ -191,5 +229,28 @@ export const EventClearResultSchema = Type.Object(
 	},
 	strict,
 );
+export const PreviewResultSchema = Type.Union([
+	Type.Object({ active: Type.Literal(false) }, strict),
+	Type.Object({ active: Type.Literal(true), state: PreviewStateSchema }, strict),
+]);
+export const PreviewFrameResultSchema = Type.Union([
+	Type.Object({ active: Type.Literal(false) }, strict),
+	Type.Object(
+		{
+			active: Type.Literal(true),
+			state: PreviewStateSchema,
+			effect: Type.Union([
+				Type.Literal('static'),
+				Type.Literal('breathe'),
+				Type.Literal('pulse'),
+			]),
+			color: Type.String({ pattern: '^#[0-9A-F]{6}$' }),
+			intensity: Type.Number({ minimum: 0, maximum: 1 }),
+		},
+		strict,
+	),
+]);
 
 export type RpcRequest = Static<typeof RpcRequestSchema>;
+export type PreviewResult = Static<typeof PreviewResultSchema>;
+export type PreviewFrameResult = Static<typeof PreviewFrameResultSchema>;

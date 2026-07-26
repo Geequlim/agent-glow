@@ -20,17 +20,17 @@ lighting object: /xyz/ljones/aura/19b6_4_5
 
 ## 2. Aura
 
-| 属性 | 签名 | 实测值或范围 |
-| --- | --- | --- |
-| `DeviceType` | `u` | `0` |
-| `Brightness` | `u` | `3` |
-| `SupportedBrightness` | `au` | `0, 1, 2, 3` |
-| `LedMode` | `u` | `0` |
-| `SupportedBasicModes` | `au` | `0` |
-| `SupportedBasicZones` | `au` | 空 |
-| `SupportedPowerZones` | `au` | `1` |
-| `LedModeData` | `(uu(yyy)(yyy)ss)` | 模式、区域、两组 RGB、速度、方向 |
-| `LedPower` | `(a(ubbbb))` | 单个 power zone |
+| 属性                  | 签名               | 实测值或范围                     |
+| --------------------- | ------------------ | -------------------------------- |
+| `DeviceType`          | `u`                | `0`                              |
+| `Brightness`          | `u`                | `3`                              |
+| `SupportedBrightness` | `au`               | `0, 1, 2, 3`                     |
+| `LedMode`             | `u`                | `0`                              |
+| `SupportedBasicModes` | `au`               | `0`                              |
+| `SupportedBasicZones` | `au`               | 空                               |
+| `SupportedPowerZones` | `au`               | `1`                              |
+| `LedModeData`         | `(uu(yyy)(yyy)ss)` | 模式、区域、两组 RGB、速度、方向 |
+| `LedPower`            | `(a(ubbbb))`       | 单个 power zone                  |
 
 当前设备只确认了单区静态颜色。`SupportedBasicModes` 没有报告 Breathe，因此软件呼吸是首版可靠路径。
 
@@ -38,18 +38,18 @@ lighting object: /xyz/ljones/aura/19b6_4_5
 
 ## 3. Slash
 
-| 属性 | 签名 | 实测值 |
-| --- | --- | --- |
-| `Enabled` | `b` | `false` |
-| `Brightness` | `y` | `64` |
-| `Interval` | `y` | `1` |
-| `Mode` | `u` | `50`（Hazard / `0x32`） |
-| `ShowOnBattery` | `b` | `false` |
-| `ShowOnBoot` | `b` | `false` |
-| `ShowOnLidClosed` | `b` | `false` |
-| `ShowOnShutdown` | `b` | `false` |
-| `ShowOnSleep` | `b` | `false` |
-| `ShowBatteryWarning` | `b` | `false` |
+| 属性                 | 签名 | 实测值                  |
+| -------------------- | ---- | ----------------------- |
+| `Enabled`            | `b`  | `false`                 |
+| `Brightness`         | `y`  | `64`                    |
+| `Interval`           | `y`  | `1`                     |
+| `Mode`               | `u`  | `50`（Hazard / `0x32`） |
+| `ShowOnBattery`      | `b`  | `false`                 |
+| `ShowOnBoot`         | `b`  | `false`                 |
+| `ShowOnLidClosed`    | `b`  | `false`                 |
+| `ShowOnShutdown`     | `b`  | `false`                 |
+| `ShowOnSleep`        | `b`  | `false`                 |
+| `ShowBatteryWarning` | `b`  | `false`                 |
 
 Slash 还暴露 `DeviceState() -> (byyu)` 方法。D-Bus 接口本身没有报告合法 `Mode`
 列表，但当前安装的 `asusctl 6.3.10` 提供了与 ROG Control Center 相同的固件动画枚举：
@@ -65,14 +65,15 @@ Phantom, Spectrum, Hazard, Interfacing, Ramp, GameOver, Start, Buzzer
 
 首个语义映射依据动画含义选择少量模式，不逐个轮播全部枚举：
 
-| 语义状态 | Slash 模式 | 亮度 | 选择依据 |
-| --- | --- | --- | --- |
-| `idle` | 不设置 | 系统原值 | 恢复接管前保存的完整硬件快照 |
-| `paused` | Bounce | 30% | 低亮度往返表达仍在等待 |
-| `working` | Loading | 70% | 进度条式动画表达处理中 |
-| `waiting_permission` | Buzzer | 100% | 通知式动画要求用户注意 |
-| `success` | Slash | 90% | 明确、快速的品牌式扫光 |
-| `error` | Hazard | 100% | 警示闪烁表达异常 |
+| 语义状态             | Slash 模式 | 亮度     | 选择依据                     |
+| -------------------- | ---------- | -------- | ---------------------------- |
+| `idle`               | 不设置     | 系统原值 | 恢复接管前保存的完整硬件快照 |
+| `paused`             | Bounce     | 20%      | 低亮度往返表达仍在等待       |
+| `working`            | Loading    | 60%      | 进度条式动画表达处理中       |
+| `tool_use`           | BitStream  | 90%      | 高频数据流表达工具正在执行   |
+| `waiting_permission` | Buzzer     | 100%     | 通知式动画要求用户注意       |
+| `success`            | Slash      | 90%      | 明确、快速的品牌式扫光       |
+| `error`              | Hazard     | 100%     | 警示闪烁表达异常             |
 
 亮度使用 Slash 原生的 `0–255` 连续值；`Interval` 使用 `0–5`，控制基础动画
 重复之间的间隔。

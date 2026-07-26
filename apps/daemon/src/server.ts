@@ -56,10 +56,20 @@ export interface DaemonServerOptions {
 }
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000;
+const PREVIEW_TTL_MS = 15_000;
+const DEVICE_ENABLED_SETTING = {
+	key: 'enabled',
+	label: '启用设备',
+	description: '关闭后 AgentGlow 不再控制此设备。',
+	kind: 'boolean',
+	defaultValue: true,
+} as const;
 
 interface DeviceConfigurationPlan {
 	readonly deviceId: string;
+	readonly previousEnabled: boolean;
 	readonly previousValues: DeviceConfigurationValues;
+	readonly targetEnabled: boolean;
 	readonly targetValues: DeviceConfigurationValues;
 }
 
@@ -82,6 +92,8 @@ export async function startDaemonServer(
 	const sockets = new Set<Socket>();
 	let activeRequests = 0;
 	let animationTimer: NodeJS.Timeout | undefined;
+	let previewTimer: NodeJS.Timeout | undefined;
+	let previewState: Exclude<ReturnType<LeaseArbiter['currentState']>, 'idle'> | undefined;
 	let stateSyncPending = false;
 	let closing = false;
 	let closePromise: Promise<void> | undefined;
@@ -184,16 +196,16 @@ export async function startDaemonServer(
 				return { devices };
 			case 'device.config.get':
 				return enqueueConfigTransaction(() =>
-					backend.getDeviceConfiguration(request.params.deviceId),
+					getRegisteredDeviceConfiguration(request.params.deviceId),
 				);
 			case 'device.config.update':
 				return enqueueConfigTransaction(async () => {
-					const current = await backend.getDeviceConfiguration(request.params.deviceId);
+					const current = await getRegisteredDeviceConfiguration(request.params.deviceId);
 					const updated = mergeDeviceConfiguration(current, request.params.values);
 					const candidate = structuredClone(config);
 					candidate.devices[request.params.deviceId] = { ...updated.values };
 					await updateConfiguration(candidate);
-					return backend.getDeviceConfiguration(request.params.deviceId);
+					return getRegisteredDeviceConfiguration(request.params.deviceId);
 				});
 			case 'diagnostics.get': {
 				return {
@@ -203,21 +215,44 @@ export async function startDaemonServer(
 					},
 					devices: devices.map((device) => ({
 						deviceId: device.id,
+						enabled: isDeviceEnabled(device.id),
 						delivery: scheduler.stats(device.id),
 						...(deviceDiagnostics.get(device.id) ?? { status: 'unknown' }),
 					})),
 				};
 			}
+			case 'preview.start':
+			case 'preview.update':
+				previewState = request.params.state;
+				refreshPreviewTimer();
+				await displayState(previewState, request.method === 'preview.start');
+				return { active: true, state: previewState };
+			case 'preview.stop':
+				await stopPreview();
+				return { active: false };
+			case 'preview.getFrame': {
+				if (!previewState) return { active: false };
+				refreshPreviewTimer();
+				const frame = visualEngine.frame();
+				return {
+					active: true,
+					state: previewState,
+					effect: configuredVisualEffect(config, previewState).effect,
+					color: toHexColor(frame.color),
+					intensity: frame.intensity,
+				};
+			}
 			case 'event.emit': {
 				const currentState = arbiter.apply(request.params.event);
-				await displayState(currentState, request.params.event.phase === 'pulse');
+				if (!previewState)
+					await displayState(currentState, request.params.event.phase === 'pulse');
 				return { accepted: true, currentState };
 			}
 			case 'event.clear': {
 				const { source, sessionId, state } = request.params;
 				const cleared = arbiter.clear(source, sessionId, state);
 				const currentState = arbiter.currentState();
-				await displayState(currentState);
+				if (!previewState) await displayState(currentState);
 				return { cleared, currentState };
 			}
 			default:
@@ -257,7 +292,7 @@ export async function startDaemonServer(
 		const previousConfig = config;
 		config = candidate;
 		arbiter.setStaleLeaseTtlMs(config.daemon.staleSessionTimeoutMs);
-		const currentState = arbiter.currentState();
+		const currentState = previewState ?? arbiter.currentState();
 		visualEngine.setTransitionDurationMs(config.rendering.transitionMs);
 		if (
 			currentState !== 'idle' &&
@@ -270,6 +305,7 @@ export async function startDaemonServer(
 		}
 		displayedState = currentState;
 		scheduler.invalidate();
+		if (currentState !== 'idle') await restoreNewlyDisabledDevices(plans);
 		if (currentState !== 'idle') {
 			submitFrame(visualEngine.frame());
 			if (resumeDelivery && !lifecyclePaused) scheduler.resume();
@@ -299,10 +335,11 @@ export async function startDaemonServer(
 	): Promise<readonly DeviceConfigurationPlan[]> {
 		return Promise.all(
 			targetDevices.map(async (device) => {
-				const current = mergeDeviceConfiguration(
+				const backendCurrent = mergeDeviceConfiguration(
 					await backend.getDeviceConfiguration(device.id),
 					{},
 				);
+				const current = await getRegisteredDeviceConfiguration(device.id);
 				const defaults: DeviceConfiguration = {
 					...current,
 					values: Object.fromEntries(
@@ -315,11 +352,33 @@ export async function startDaemonServer(
 				);
 				return {
 					deviceId: device.id,
-					previousValues: { ...current.values },
-					targetValues: { ...target.values },
+					previousEnabled: readEnabled(current.values),
+					previousValues: { ...backendCurrent.values },
+					targetEnabled: readEnabled(target.values),
+					targetValues: withoutEnabled(target.values),
 				};
 			}),
 		);
+	}
+
+	async function getRegisteredDeviceConfiguration(
+		deviceId: string,
+	): Promise<DeviceConfiguration> {
+		const registered = await backend.getDeviceConfiguration(deviceId);
+		if (
+			registered.settings.some((setting) => setting.key === DEVICE_ENABLED_SETTING.key) ||
+			Object.hasOwn(registered.values, DEVICE_ENABLED_SETTING.key)
+		) {
+			throw new Error('Backend reserved device configuration key: enabled');
+		}
+		return {
+			...registered,
+			settings: [DEVICE_ENABLED_SETTING, ...registered.settings],
+			values: {
+				enabled: config.devices[deviceId]?.enabled ?? true,
+				...registered.values,
+			},
+		};
 	}
 
 	async function applyDeviceConfigurationPlans(
@@ -356,6 +415,19 @@ export async function startDaemonServer(
 		}
 		if (errors.length > 0)
 			throw new AggregateError(errors, 'Device configuration rollback failed');
+	}
+
+	async function restoreNewlyDisabledDevices(
+		plans: readonly DeviceConfigurationPlan[],
+	): Promise<void> {
+		const snapshotByDevice = new Map(
+			snapshots.map((snapshot) => [snapshot.deviceId, snapshot] as const),
+		);
+		for (const plan of plans) {
+			if (!plan.previousEnabled || plan.targetEnabled) continue;
+			const snapshot = snapshotByDevice.get(plan.deviceId);
+			if (snapshot) await backend.restoreSnapshot(snapshot);
+		}
 	}
 
 	function enqueueConfigTransaction<T>(operation: () => Promise<T>): Promise<T> {
@@ -400,7 +472,34 @@ export async function startDaemonServer(
 	}
 
 	function submitFrame(visualState: StaticVisualState): void {
-		for (const device of devices) scheduler.submit(device.id, visualState);
+		for (const device of devices) {
+			if (isDeviceEnabled(device.id)) scheduler.submit(device.id, visualState);
+		}
+	}
+
+	function isDeviceEnabled(deviceId: string): boolean {
+		return config.devices[deviceId]?.enabled !== false;
+	}
+
+	function refreshPreviewTimer(): void {
+		if (previewTimer) clearTimeout(previewTimer);
+		previewTimer = setTimeout(() => {
+			void enqueueConfigTransaction(stopPreview).catch((error: unknown) => {
+				console.error(
+					`[agent-glow] preview timeout recovery failed error=${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			});
+		}, PREVIEW_TTL_MS);
+	}
+
+	async function stopPreview(): Promise<void> {
+		if (previewTimer) clearTimeout(previewTimer);
+		previewTimer = undefined;
+		if (!previewState) return;
+		previewState = undefined;
+		await displayState(arbiter.currentState());
 	}
 
 	function recordApplyResult(deviceId: string, result: BackendApplyResult): void {
@@ -526,7 +625,7 @@ export async function startDaemonServer(
 
 	function animate(): void {
 		if (lifecyclePaused) return;
-		const currentState = arbiter.currentState();
+		const currentState = previewState ?? arbiter.currentState();
 		const changed = currentState !== displayedState;
 		if (changed) {
 			if (!stateSyncPending) {
@@ -567,6 +666,8 @@ export async function startDaemonServer(
 				stopLifecycleWatch?.();
 				if (animationTimer) clearInterval(animationTimer);
 				animationTimer = undefined;
+				if (previewTimer) clearTimeout(previewTimer);
+				previewTimer = undefined;
 				for (const socket of sockets) socket.destroy();
 				await captureError(() => closeServer(server), errors);
 				await captureError(
@@ -731,6 +832,15 @@ function isPowerOfTwo(value: number): boolean {
 	return value > 0 && (value & (value - 1)) === 0;
 }
 
+function readEnabled(values: DeviceConfigurationValues): boolean {
+	return values.enabled !== false;
+}
+
+function withoutEnabled(values: DeviceConfigurationValues): DeviceConfigurationValues {
+	const { enabled: _enabled, ...backendValues } = values;
+	return backendValues;
+}
+
 async function captureError(operation: () => Promise<void>, errors: unknown[]): Promise<void> {
 	try {
 		await operation();
@@ -778,12 +888,14 @@ function formatEffectLog(
 	deviceCount: number,
 	frameRate: number,
 ): string {
-	const common = `state=${state} effect=${effect.effect} color=${toHexColor(
-		effect.color,
-	)} rgbBrightness=software-scale hardwareBrightness=${effect.hardwareIntensity} backend=${backendId} devices=${deviceCount}`;
+	const color =
+		effect.effect === 'static'
+			? `color=${toHexColor(effect.color)}`
+			: `colors=${toHexColor(effect.startColor)}..${toHexColor(effect.endColor)}`;
+	const common = `state=${state} effect=${effect.effect} ${color} rgbBrightness=software-scale hardwareBrightness=${effect.hardwareIntensity} backend=${backendId} devices=${deviceCount}`;
 	if (effect.effect === 'static')
 		return `[agent-glow] displaying ${common} intensity=${effect.intensity}`;
-	if (effect.effect === 'breathe')
+	if (effect.effect === 'breathe' || effect.effect === 'stream')
 		return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} periodMs=${effect.periodMs} fps=${frameRate}`;
 	return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} pulses=${effect.pulseCount} durationMs=${effect.durationMs} fps=${frameRate}`;
 }

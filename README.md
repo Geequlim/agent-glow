@@ -2,10 +2,12 @@
 
 面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成。首个生产 backend 通过 `asusd` 支持 ROG Aura 与 Slash，后续可以接入外置 RGB 灯等其他设备。
 
-项目目前处于工程基础建设阶段。详细设计与实施顺序见：
+项目目前已完成 P6 Desktop 和 P7 的 Codex/OpenCode 接入软件实现；打包发布仍留在
+P8。详细设计、当前进度与实施顺序见：
 
 - [技术规划](docs/technical-plan.md)
 - [开发路线图](docs/development-roadmap.md)
+- [桌面应用产品规划](docs/desktop-product-plan.md)
 - [硬件抽象决策](docs/decisions/hardware-abstraction.md)
 - [P0 外部依赖验证](docs/p0-validation.md)
 
@@ -43,22 +45,35 @@ yarn tiny check
 node .yarn/releases/yarn-4.17.1.cjs tiny check
 ```
 
-## P1 可构建入口
+## 启动完整桌面应用
 
-P1 提供两个最小 Node.js 入口：
+```bash
+yarn tiny desktop
+```
 
-- `apps/daemon`：常驻进程骨架，支持 `--help`、`--version`、`SIGINT` 与 `SIGTERM`。
-- `apps/cli`：命令行骨架，支持 `--help` 与 `--version`。
+该命令会构建 daemon、CLI 和 Desktop，刷新开发用 systemd 用户 unit；已经运行的
+服务会重启，未运行的服务不会被擅自启用。随后打开 GTK4/libadwaita 桌面窗口。
+
+窗口提供概览与单一服务开关、自动生效的灯光样式、独立实时预览、注册驱动的设备
+配置、Codex/OpenCode 接入、合并在概览中的诊断能力和关于页。Agent 外部配置只有在展示目标文件和 diff
+并由用户确认后才会写入。
+
+## P1 可构建入口（历史基线）
+
+P1 建立了两个 Node.js 入口：
+
+- `apps/daemon`：常驻状态与灯光服务。
+- `apps/cli`：状态、配置、诊断、服务与 Agent 适配命令。
 
 两个入口的命令行参数、帮助与版本输出统一由 Commander.js 管理。
 
 构建产物分别位于 `apps/daemon/dist/index.cjs` 和
-`apps/cli/dist/index.cjs`。这一阶段只建立进程边界与构建、测试链路，
-尚未接入 Socket/RPC、状态引擎或任何硬件 backend。
+`apps/cli/dist/index.cjs`。
 
-## P2 最小闭环
+## P2 无硬件闭环
 
-当前 daemon 使用 Unix Socket、JSON-RPC、租约仲裁和内存 fake backend 跑通无硬件闭环。
+项目保留 Unix Socket、JSON-RPC、租约仲裁和内存 fake backend 的无硬件闭环，
+供自动测试和无硬件开发使用。
 构建后，在一个终端启动 daemon：
 
 ```bash
@@ -78,7 +93,7 @@ node apps/cli/dist/index.cjs event \
 node apps/cli/dist/index.cjs clear --source manual --session demo
 ```
 
-这条链路目前只提交静态视觉状态到 fake backend，不访问真实硬件。
+在 fake backend 模式下，这条链路不访问真实硬件。
 
 ## Aura 实机 MVP
 
@@ -103,7 +118,7 @@ node apps/daemon/dist/index.cjs
 yarn tiny smoke/hardware/aura
 ```
 
-测试依次展示 `idle`、`paused`、`working`、`waiting_permission`、`success` 和
+测试依次展示 `idle`、`paused`、`working`、`tool_use`、`waiting_permission`、`success` 和
 `error`，每种状态停留约 5 秒。daemon 会为每次实际提交输出 state、效果、
 颜色、强度、backend 和设备数；`working` 使用约 2.2 秒的软件呼吸周期，
 `waiting_permission` 使用约 0.9 秒的软件呼吸周期。呼吸亮度通过缩放 RGB 输出，
@@ -128,9 +143,9 @@ node apps/cli/dist/index.cjs device-config-set \
 node apps/cli/dist/index.cjs diagnostics
 ```
 
-更新会立即重新应用当前语义状态。`diagnostics` 会展示 backend 健康状态、每个设备
-最近请求与实际应用的视觉状态、设备效果细节和降级原因。这一阶段的设备配置只保存在
-daemon 内存中；P5 再负责配置文件持久化、迁移和原子保存。
+更新会立即重新应用当前语义状态并进入统一的 P5 配置事务。`diagnostics` 会展示
+backend 健康状态、每个设备最近请求与实际应用的视觉状态、设备效果细节和降级原因。
+配置通过 TypeBox 校验并原子保存。
 
 ## P4 动画与故障恢复
 
@@ -165,3 +180,11 @@ yarn tiny probe/hardware/slash
 ```
 
 真实写入必须按 [P0 外部依赖验证](docs/p0-validation.md) 显式解锁。
+
+## 作者与许可
+
+作者：Geequlim
+
+AgentGlow 与 VoxSpell 一致，采用
+[PolyForm Noncommercial License 1.0.0](LICENSE)，允许非商业用途，禁止商业使用。
+必需版权声明见 [NOTICE](NOTICE)。

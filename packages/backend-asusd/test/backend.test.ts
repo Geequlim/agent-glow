@@ -238,16 +238,18 @@ describe('AsusdLightingBackend', () => {
 
 		const configuration = await backend.getDeviceConfiguration(device.id);
 
-		expect(configuration.settings).toHaveLength(15);
+		expect(configuration.settings).toHaveLength(18);
 		expect(
 			configuration.settings.some((setting) => setting.key.startsWith('states.idle.')),
 		).toBe(false);
 		expect(
 			configuration.settings.find((setting) => setting.key === 'states.working.effect'),
 		).toMatchObject({
+			label: '动画效果',
+			group: '处理中',
 			kind: 'select',
 			defaultValue: 'loading',
-			options: expect.arrayContaining([{ value: 'spectrum', label: 'Spectrum' }]),
+			options: expect.arrayContaining([{ value: 'spectrum', label: '光谱' }]),
 		});
 
 		await backend.updateDeviceConfiguration(device.id, {
@@ -330,7 +332,7 @@ describe('AsusdLightingBackend', () => {
 		});
 		expect(transport.slash).toMatchObject({
 			Enabled: { value: true },
-			Brightness: { value: 179 },
+			Brightness: { value: 153 },
 			Interval: { value: 0 },
 			Mode: { value: 0x32 },
 		});

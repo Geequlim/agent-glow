@@ -14,6 +14,8 @@ export function linearChannelToSrgb(channel: number): number {
 
 export function interpolateColorLinear(from: RgbColor, to: RgbColor, progress: number): RgbColor {
 	const amount = clamp(progress, 0, 1);
+	if (amount === 0) return from;
+	if (amount === 1) return to;
 	return {
 		red: interpolateChannel(from.red, to.red, amount),
 		green: interpolateChannel(from.green, to.green, amount),

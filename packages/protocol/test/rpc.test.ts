@@ -46,6 +46,20 @@ describe('RpcRequestSchema', () => {
 			{
 				jsonrpc: '2.0',
 				id: 10,
+				method: 'preview.start',
+				params: { state: 'working' },
+			},
+			{
+				jsonrpc: '2.0',
+				id: 11,
+				method: 'preview.update',
+				params: { state: 'waiting_permission' },
+			},
+			{ jsonrpc: '2.0', id: 12, method: 'preview.getFrame', params: {} },
+			{ jsonrpc: '2.0', id: 13, method: 'preview.stop', params: {} },
+			{
+				jsonrpc: '2.0',
+				id: 14,
 				method: 'event.emit',
 				params: {
 					event: {
@@ -59,7 +73,7 @@ describe('RpcRequestSchema', () => {
 			},
 			{
 				jsonrpc: '2.0',
-				id: 11,
+				id: 15,
 				method: 'event.clear',
 				params: { source: 'codex', sessionId: 'session-1' },
 			},
@@ -101,6 +115,7 @@ const validConfig = {
 	rendering: { colorSpace: 'linear-rgb', restoreOnExit: true, transitionMs: 300 },
 	profiles: {
 		working: staticProfile,
+		tool_use: staticProfile,
 		waiting_permission: staticProfile,
 		success: staticProfile,
 		error: staticProfile,

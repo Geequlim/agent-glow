@@ -29,16 +29,25 @@ export function configuredVisualEffect(
 ): SemanticVisualEffect {
 	const profile = config.profiles[state];
 	const common = {
-		color: parseHexColor(profile.color),
 		hardwareIntensity: profile.hardwareIntensity,
 		semanticState: state,
 	};
 	if (profile.effect === 'static') {
-		return { ...common, effect: profile.effect, intensity: profile.intensity };
-	}
-	if (profile.effect === 'breathe') {
 		return {
 			...common,
+			color: parseHexColor(profile.color),
+			effect: profile.effect,
+			intensity: profile.intensity,
+		};
+	}
+	const animatedColors = {
+		startColor: parseHexColor(profile.startColor),
+		endColor: parseHexColor(profile.endColor),
+	};
+	if (profile.effect === 'breathe' || profile.effect === 'stream') {
+		return {
+			...common,
+			...animatedColors,
 			effect: profile.effect,
 			minimumIntensity: profile.minimumIntensity,
 			maximumIntensity: profile.maximumIntensity,
@@ -47,6 +56,7 @@ export function configuredVisualEffect(
 	}
 	return {
 		...common,
+		...animatedColors,
 		effect: profile.effect,
 		minimumIntensity: profile.minimumIntensity,
 		maximumIntensity: profile.maximumIntensity,

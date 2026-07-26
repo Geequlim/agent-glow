@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createDefaultConfig, stringifyConfigYaml } from '@agent-glow/config';
 
-import { runCli } from '../src/command.js';
+import { adaptCodexHook, runCli } from '../src/command.js';
 
 describe('runCli', () => {
 	it('prints help when invoked without arguments', async () => {
@@ -160,6 +160,201 @@ describe('runCli', () => {
 			),
 		).toBe(3);
 		expect(output.stderr).toEqual(['inactive\n']);
+	});
+
+	it('adapts Codex hook events from stdin without printing hook output', async () => {
+		const output = createOutput();
+		const calls: unknown[][] = [];
+
+		expect(
+			await runCli(
+				['adapt', 'codex'],
+				'1.2.3',
+				output,
+				async (method, params) => {
+					calls.push([method, params]);
+					return { accepted: true, currentState: 'working' };
+				},
+				undefined,
+				undefined,
+				async () =>
+					JSON.stringify({
+						hook_event_name: 'UserPromptSubmit',
+						session_id: 'codex-session',
+					}),
+			),
+		).toBe(0);
+		expect(calls).toEqual([
+			[
+				'event.emit',
+				{
+					event: {
+						version: 1,
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'working',
+						phase: 'enter',
+					},
+				},
+			],
+		]);
+		expect(output.stdout).toEqual([]);
+		expect(output.stderr).toEqual([]);
+	});
+
+	it('maps Codex completion and ignores daemon failures so hooks never block Codex', async () => {
+		const output = createOutput();
+		const calls: string[] = [];
+
+		expect(
+			await runCli(
+				['adapt', 'codex'],
+				'1.2.3',
+				output,
+				async (method) => {
+					calls.push(method);
+					throw new Error('daemon unavailable');
+				},
+				undefined,
+				undefined,
+				async () =>
+					JSON.stringify({ hook_event_name: 'Stop', session_id: 'codex-session' }),
+			),
+		).toBe(0);
+		expect(calls).toEqual(['event.emit']);
+		expect(output.stderr).toEqual([]);
+	});
+
+	it('ignores malformed Codex hook input', async () => {
+		const output = createOutput();
+		expect(
+			await runCli(
+				['adapt', 'codex'],
+				'1.2.3',
+				output,
+				unusedRequest,
+				undefined,
+				undefined,
+				async () => '{broken',
+			),
+		).toBe(0);
+	});
+
+	it.each([
+		[
+			'PermissionRequest',
+			[
+				'event.emit',
+				{
+					event: {
+						version: 1,
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'waiting_permission',
+						phase: 'pulse',
+						ttlMs: 20_000,
+					},
+				},
+			],
+		],
+		[
+			'PostToolUse',
+			[
+				[
+					'event.clear',
+					{
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'waiting_permission',
+					},
+				],
+				[
+					'event.clear',
+					{
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'tool_use',
+					},
+				],
+			],
+		],
+		['SessionEnd', ['event.clear', { source: 'codex', sessionId: 'codex-session' }]],
+	] as const)('maps the Codex %s fixture', async (hookEventName, expectedCall) => {
+		const calls: unknown[][] = [];
+		await adaptCodexHook(
+			JSON.stringify({
+				hook_event_name: hookEventName,
+				session_id: 'codex-session',
+			}),
+			async (method, params) => {
+				calls.push([method, params]);
+				return {};
+			},
+		);
+		expect(calls).toEqual(hookEventName === 'PostToolUse' ? expectedCall : [expectedCall]);
+	});
+
+	it('maps Codex PreToolUse to tool use after clearing permission', async () => {
+		const calls: unknown[][] = [];
+		await adaptCodexHook(
+			JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'codex-session' }),
+			async (method, params) => {
+				calls.push([method, params]);
+				return {};
+			},
+		);
+
+		expect(calls).toEqual([
+			[
+				'event.clear',
+				{
+					source: 'codex',
+					sessionId: 'codex-session',
+					state: 'waiting_permission',
+				},
+			],
+			[
+				'event.emit',
+				{
+					event: {
+						version: 1,
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'tool_use',
+						phase: 'enter',
+					},
+				},
+			],
+		]);
+	});
+
+	it('maps the Codex Stop fixture to completion followed by lease cleanup', async () => {
+		const calls: unknown[][] = [];
+		await adaptCodexHook(
+			JSON.stringify({ hook_event_name: 'Stop', session_id: 'codex-session' }),
+			async (method, params) => {
+				calls.push([method, params]);
+				return {};
+			},
+		);
+
+		expect(calls).toEqual([
+			[
+				'event.emit',
+				{
+					event: {
+						version: 1,
+						source: 'codex',
+						sessionId: 'codex-session',
+						state: 'success',
+						phase: 'pulse',
+						ttlMs: 1500,
+					},
+				},
+			],
+			['event.clear', { source: 'codex', sessionId: 'codex-session', state: 'tool_use' }],
+			['event.clear', { source: 'codex', sessionId: 'codex-session', state: 'working' }],
+		]);
 	});
 });
 

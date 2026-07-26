@@ -1,49 +1,61 @@
 version: 1
 
 daemon:
-  frameRate: 10
-  staleSessionTimeoutMs: 300000
+    frameRate: 10
+    staleSessionTimeoutMs: 300000
 
 rendering:
-  colorSpace: linear-rgb
-  restoreOnExit: true
-  transitionMs: 300
+    colorSpace: linear-rgb
+    restoreOnExit: true
+    transitionMs: 120
 
 profiles:
-  working:
-    color: "#5865F2"
-    effect: breathe
-    hardwareIntensity: 0.7
-    minimumIntensity: 0.08
-    maximumIntensity: 1
-    periodMs: 2200
-  waiting_permission:
-    color: "#FF9F1C"
-    effect: breathe
-    hardwareIntensity: 1
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    periodMs: 900
-  success:
-    color: "#35C759"
-    effect: pulse
-    hardwareIntensity: 0.9
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    durationMs: 900
-    pulseCount: 1
-  error:
-    color: "#FF3B30"
-    effect: pulse
-    hardwareIntensity: 1
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    durationMs: 1000
-    pulseCount: 2
-  paused:
-    color: "#FFF4D6"
-    effect: static
-    hardwareIntensity: 0.3
-    intensity: 0.25
+    working:
+        startColor: '#5865F2'
+        endColor: '#5865F2'
+        effect: breathe
+        hardwareIntensity: 0.65
+        minimumIntensity: 0.22
+        maximumIntensity: 0.72
+        periodMs: 2800
+    tool_use:
+        startColor: '#00B8D9'
+        endColor: '#5865F2'
+        effect: stream
+        hardwareIntensity: 0.8
+        minimumIntensity: 0.3
+        maximumIntensity: 0.9
+        periodMs: 1000
+    waiting_permission:
+        startColor: '#FF9F1C'
+        endColor: '#FF9F1C'
+        effect: breathe
+        hardwareIntensity: 0.85
+        minimumIntensity: 0.2
+        maximumIntensity: 0.9
+        periodMs: 1000
+    success:
+        startColor: '#35C759'
+        endColor: '#35C759'
+        effect: pulse
+        hardwareIntensity: 0.75
+        minimumIntensity: 0.15
+        maximumIntensity: 1
+        durationMs: 1000
+        pulseCount: 1
+    error:
+        startColor: '#FF3B30'
+        endColor: '#FF3B30'
+        effect: pulse
+        hardwareIntensity: 0.9
+        minimumIntensity: 0.15
+        maximumIntensity: 1
+        durationMs: 1200
+        pulseCount: 2
+    paused:
+        color: '#FFF4D6'
+        effect: static
+        hardwareIntensity: 0.18
+        intensity: 0.18
 
 devices: {}

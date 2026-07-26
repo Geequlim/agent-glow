@@ -29,6 +29,7 @@ export async function runCli(
 	request: RpcRequestFunction,
 	readTextFile: (filePath: string) => Promise<string> = (filePath) => readFile(filePath, 'utf8'),
 	runServiceCommand: ServiceCommandRunner = spawnServiceCommand,
+	readStdin: () => Promise<string> = readStandardInput,
 ): Promise<number> {
 	let commandExitCode = 0;
 	const program = new Command()
@@ -139,13 +140,30 @@ export async function runCli(
 		});
 
 	program
+		.command('adapt')
+		.description('Adapt an Agent lifecycle hook from stdin')
+		.argument('<agent>', 'Agent adapter')
+		.action(async (agent: string) => {
+			if (agent !== 'codex') throw new Error(`Unsupported Agent adapter: ${agent}`);
+			await adaptCodexHook(await readStdin(), request);
+		});
+
+	program
 		.command('event')
 		.description('Submit a semantic state event')
 		.requiredOption('--source <source>')
 		.requiredOption('--session <session-id>')
 		.addOption(
 			new Option('--state <state>')
-				.choices(['idle', 'working', 'waiting_permission', 'success', 'error', 'paused'])
+				.choices([
+					'idle',
+					'working',
+					'tool_use',
+					'waiting_permission',
+					'success',
+					'error',
+					'paused',
+				])
 				.makeOptionMandatory(),
 		)
 		.addOption(
@@ -184,6 +202,7 @@ export async function runCli(
 			new Option('--state <state>').choices([
 				'idle',
 				'working',
+				'tool_use',
 				'waiting_permission',
 				'success',
 				'error',
@@ -240,6 +259,83 @@ function parseConfigurationValue(value: string): string | number | boolean {
 	if (value === 'false') return false;
 	if (/^-?\d+$/u.test(value)) return Number(value);
 	return value;
+}
+
+export async function adaptCodexHook(source: string, request: RpcRequestFunction): Promise<void> {
+	let payload: unknown;
+	try {
+		payload = JSON.parse(source);
+	} catch {
+		return;
+	}
+	if (
+		!payload ||
+		typeof payload !== 'object' ||
+		!('hook_event_name' in payload) ||
+		typeof payload.hook_event_name !== 'string' ||
+		!('session_id' in payload) ||
+		typeof payload.session_id !== 'string' ||
+		!payload.session_id
+	) {
+		return;
+	}
+	const sessionId = payload.session_id;
+	const emit = (
+		state: 'working' | 'tool_use' | 'waiting_permission' | 'success' | 'error',
+		phase: 'enter' | 'pulse',
+		ttlMs?: number,
+	): Promise<unknown> =>
+		request('event.emit', {
+			event: {
+				version: 1,
+				source: 'codex',
+				sessionId,
+				state,
+				phase,
+				...(ttlMs ? { ttlMs } : {}),
+			},
+		});
+	const clear = (state?: string): Promise<unknown> =>
+		request('event.clear', {
+			source: 'codex',
+			sessionId,
+			...(state ? { state } : {}),
+		});
+	try {
+		switch (payload.hook_event_name) {
+			case 'UserPromptSubmit':
+				await emit('working', 'enter');
+				break;
+			case 'PermissionRequest':
+				await emit('waiting_permission', 'pulse', 20_000);
+				break;
+			case 'PreToolUse':
+				await clear('waiting_permission');
+				await emit('tool_use', 'enter');
+				break;
+			case 'PostToolUse':
+				await clear('waiting_permission');
+				await clear('tool_use');
+				break;
+			case 'Stop':
+				await emit('success', 'pulse', 1500);
+				await clear('tool_use');
+				await clear('working');
+				break;
+			case 'SessionEnd':
+				await clear();
+				break;
+		}
+	} catch {
+		// Hook integrations must never block the Agent when the daemon is unavailable.
+	}
+}
+
+async function readStandardInput(): Promise<string> {
+	let source = '';
+	process.stdin.setEncoding('utf8');
+	for await (const chunk of process.stdin) source += chunk;
+	return source;
 }
 
 function spawnServiceCommand(

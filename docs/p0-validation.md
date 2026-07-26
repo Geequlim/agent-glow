@@ -12,23 +12,23 @@ order: 3
 
 ## 1. 当前结论
 
-| 项目 | 状态 | 结论 |
-| --- | --- | --- |
-| Node.js 24 | 通过 | v24.18.0，Node ABI 137 |
-| Yarn 4 | 通过 | 仓库固定 v4.17.1 |
-| system D-Bus | 通过 | 普通用户可连接 `xyz.ljones.Asusd` |
-| asusd ObjectManager | 通过 | 根路径 `/` 实现 `GetManagedObjects` |
-| Aura 发现与读取 | 通过 | 动态对象上暴露 `xyz.ljones.Aura` |
-| Slash 发现与读取 | 通过 | 与 Aura 位于同一动态对象上 |
-| Aura 写入与恢复 | 通过 | 临时写入静态色后完整恢复并回读确认 |
-| Slash 写入与恢复 | 通过 | 临时切换开关后恢复并回读确认 |
-| node-gtk ABI | 通过 | node-gtk 4.1.1 在 Node ABI 137 下构建和加载 |
-| GTK 窗口 | 通过 | GTK4/libadwaita 窗口成功显示并自动关闭 |
-| Codex Hook 契约 | 通过 | 本机 v0.145.0，官方生命周期文档已核对 |
-| OpenCode 插件契约 | 通过 | 本机 v1.18.5，官方事件列表已核对 |
-| Claude Code Hook 契约 | 部分通过 | 官方文档已核对，本机尚未安装，缺真实 fixture |
-| 发布 runtime 策略 | 已决定 | 通用二进制包携带固定 Node.js 24 runtime |
-| 许可证 | 待决定 | 需要在 MPL-2.0、Apache-2.0 或其他许可中明确选择 |
+| 项目                  | 状态     | 结论                                            |
+| --------------------- | -------- | ----------------------------------------------- |
+| Node.js 24            | 通过     | v24.18.0，Node ABI 137                          |
+| Yarn 4                | 通过     | 仓库固定 v4.17.1                                |
+| system D-Bus          | 通过     | 普通用户可连接 `xyz.ljones.Asusd`               |
+| asusd ObjectManager   | 通过     | 根路径 `/` 实现 `GetManagedObjects`             |
+| Aura 发现与读取       | 通过     | 动态对象上暴露 `xyz.ljones.Aura`                |
+| Slash 发现与读取      | 通过     | 与 Aura 位于同一动态对象上                      |
+| Aura 写入与恢复       | 通过     | 临时写入静态色后完整恢复并回读确认              |
+| Slash 写入与恢复      | 通过     | 临时切换开关后恢复并回读确认                    |
+| node-gtk ABI          | 通过     | node-gtk 4.1.1 在 Node ABI 137 下构建和加载     |
+| GTK 窗口              | 通过     | GTK4/libadwaita 窗口成功显示并自动关闭          |
+| Codex Hook 契约       | 通过     | 本机 v0.145.0，官方生命周期文档已核对           |
+| OpenCode 插件契约     | 通过     | 本机 v1.18.5，官方事件列表已核对                |
+| Claude Code Hook 契约 | 部分通过 | 官方文档已核对，本机尚未安装，缺真实 fixture    |
+| 发布 runtime 策略     | 已决定   | 通用二进制包携带固定 Node.js 24 runtime         |
+| 许可证                | 已决定   | 与 VoxSpell 一致，使用 PolyForm Noncommercial 1.0.0 |
 
 ## 2. 本机环境
 
@@ -112,9 +112,9 @@ AGENT_GLOW_HARDWARE_TEST=1 node scripts/probes/asusd-write-restore.mts \
 
 ## 5. P0 剩余项
 
-1. 确定仓库许可证并替换当前 `UNLICENSED`。
-2. 安装或取得 Claude Code 可执行文件后，采集本机真实 Hook fixture。
-3. 在 P7 实现前，为 Codex 与 OpenCode 采集真实事件 payload；当前只完成官方契约验证。
-4. 对 Slash 各个 `Mode` 编号做显式人工硬件验证，形成“编号 → 固件效果”表。
+1. Codex 与 OpenCode 适配已按 2026-07-26 官方契约实现并覆盖契约 fixtures；仍需在用户
+   从 Desktop 明确确认接入后，补充一次真实多会话与授权流程验收记录。
+2. 对 Slash 各个 `Mode` 编号做显式人工硬件验证，形成“编号 → 固件效果”表。
 
-这些剩余项不阻塞 P1/P2 的无硬件核心开发；许可证必须在复制外部代码或首次公开发布前完成，真实 Hook fixtures 必须在对应适配器实现前完成。
+这些剩余项不阻塞当前源码开发。Agent 真实试用不会绕过桌面的外部配置确认。
+Claude Code 的既有调研记录仅作为未来参考，不属于首版待办。

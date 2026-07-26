@@ -56,32 +56,34 @@ interface SlashSnapshotValue {
 interface SlashEffect {
 	readonly mode: number;
 	readonly name: string;
+	readonly label: string;
 }
 
 const slashEffects = {
-	static: { name: 'Static', mode: 0x06 },
-	bounce: { name: 'Bounce', mode: 0x10 },
-	slash: { name: 'Slash', mode: 0x12 },
-	loading: { name: 'Loading', mode: 0x13 },
-	bit_stream: { name: 'BitStream', mode: 0x1d },
-	transmission: { name: 'Transmission', mode: 0x1a },
-	flow: { name: 'Flow', mode: 0x19 },
-	flux: { name: 'Flux', mode: 0x25 },
-	phantom: { name: 'Phantom', mode: 0x24 },
-	spectrum: { name: 'Spectrum', mode: 0x26 },
-	hazard: { name: 'Hazard', mode: 0x32 },
-	interfacing: { name: 'Interfacing', mode: 0x33 },
-	ramp: { name: 'Ramp', mode: 0x34 },
-	game_over: { name: 'GameOver', mode: 0x42 },
-	start: { name: 'Start', mode: 0x43 },
-	buzzer: { name: 'Buzzer', mode: 0x44 },
+	static: { name: 'Static', label: '静态', mode: 0x06 },
+	bounce: { name: 'Bounce', label: '弹跳', mode: 0x10 },
+	slash: { name: 'Slash', label: '斜线', mode: 0x12 },
+	loading: { name: 'Loading', label: '加载', mode: 0x13 },
+	bit_stream: { name: 'BitStream', label: '比特流', mode: 0x1d },
+	transmission: { name: 'Transmission', label: '传输', mode: 0x1a },
+	flow: { name: 'Flow', label: '流动', mode: 0x19 },
+	flux: { name: 'Flux', label: '涌动', mode: 0x25 },
+	phantom: { name: 'Phantom', label: '幻影', mode: 0x24 },
+	spectrum: { name: 'Spectrum', label: '光谱', mode: 0x26 },
+	hazard: { name: 'Hazard', label: '警示', mode: 0x32 },
+	interfacing: { name: 'Interfacing', label: '连接', mode: 0x33 },
+	ramp: { name: 'Ramp', label: '渐升', mode: 0x34 },
+	game_over: { name: 'GameOver', label: '游戏结束', mode: 0x42 },
+	start: { name: 'Start', label: '启动', mode: 0x43 },
+	buzzer: { name: 'Buzzer', label: '蜂鸣提示', mode: 0x44 },
 } as const satisfies Readonly<Record<string, SlashEffect>>;
 
 type SlashEffectId = keyof typeof slashEffects;
 
 const slashDefaults = {
-	paused: { effect: 'bounce', brightness: 77, interval: 3 },
-	working: { effect: 'loading', brightness: 179, interval: 0 },
+	paused: { effect: 'bounce', brightness: 51, interval: 3 },
+	working: { effect: 'loading', brightness: 153, interval: 0 },
+	tool_use: { effect: 'bit_stream', brightness: 230, interval: 0 },
 	waiting_permission: { effect: 'buzzer', brightness: 255, interval: 1 },
 	success: { effect: 'slash', brightness: 230, interval: 2 },
 	error: { effect: 'hazard', brightness: 255, interval: 0 },
@@ -420,22 +422,30 @@ export class AsusdLightingBackend implements LightingBackend {
 const slashConfigurationSettings: DeviceConfigurationSetting[] = Object.entries(
 	slashDefaults,
 ).flatMap(([state, defaults]) => {
-	const group = state.replaceAll('_', ' ');
+	const group =
+		{
+			paused: '已暂停',
+			working: '处理中',
+			tool_use: '调用工具',
+			waiting_permission: '等待授权',
+			success: '已完成',
+			error: '发生错误',
+		}[state] ?? state;
 	return [
 		{
 			key: `states.${state}.effect`,
-			label: 'Animation',
+			label: '动画效果',
 			group,
 			kind: 'select',
 			defaultValue: defaults.effect,
 			options: Object.entries(slashEffects).map(([value, effect]) => ({
 				value,
-				label: effect.name,
+				label: effect.label,
 			})),
 		},
 		{
 			key: `states.${state}.brightness`,
-			label: 'Brightness',
+			label: '亮度',
 			group,
 			kind: 'integer',
 			defaultValue: defaults.brightness,
@@ -445,7 +455,7 @@ const slashConfigurationSettings: DeviceConfigurationSetting[] = Object.entries(
 		},
 		{
 			key: `states.${state}.interval`,
-			label: 'Animation interval',
+			label: '动画速度',
 			group,
 			kind: 'integer',
 			defaultValue: defaults.interval,
@@ -474,6 +484,7 @@ function toAuraDevice(object: ManagedObject): AuraDevice | undefined {
 		descriptor: {
 			id: `asusd:aura-${stableSuffix}`,
 			name: 'ROG Aura',
+			description: '键盘 RGB 灯光',
 			capabilities: ['power', 'static_color', 'brightness'],
 		},
 	};
@@ -499,6 +510,7 @@ function toSlashDevice(object: ManagedObject): SlashDevice | undefined {
 		descriptor: {
 			id: `asusd:slash-${stableSuffix}`,
 			name: 'ROG Slash',
+			description: '机身背面 Slash 灯带',
 			capabilities: ['power', 'brightness', 'firmware_effect'],
 		},
 	};

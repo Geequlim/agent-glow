@@ -13,7 +13,7 @@ AgentGlow 是一个运行在 Linux 用户会话中的硬件无关灯光状态服
 项目核心既不是“Codex 灯光插件”，也不是“ROG 灯光控制器”，而是同时与事件来源和具体硬件解耦的通用灯效引擎：
 
 ```text
-Codex / Claude Code / OpenCode / 用户脚本
+Codex / OpenCode / 用户脚本
                     │
                     │ 语义事件
                     ▼
@@ -43,7 +43,7 @@ Codex Hook 只是第一种事件来源，asusd 只是第一种生产设备实现
 - `asusd` 已通过 D-Bus 暴露的 Aura 与 Slash 设备；
 - 单区 RGB 键盘的颜色、亮度、呼吸和状态过渡；
 - Slash 已有的开关、亮度和固件动画；
-- Codex、Claude Code、OpenCode 适配器；
+- Codex、OpenCode 适配器；
 - GTK4/libadwaita 配置界面；
 - systemd 用户服务；
 - 通用 Linux x86_64 压缩包与 AUR 二进制包。
@@ -69,27 +69,27 @@ Codex Hook 只是第一种事件来源，asusd 只是第一种生产设备实现
 
 整体工程和发布方式参考 VoxSpell，但仅复用适合本项目的部分。
 
-| 领域 | 决策 |
-| --- | --- |
-| 语言 | TypeScript |
-| 运行时 | Node.js 24 |
-| 包管理 | Yarn 4，node-modules linker |
-| 仓库 | Yarn Workspaces monorepo |
-| 构建 | Rspack，输出可直接运行的 CJS bundle |
+| 领域       | 决策                                                    |
+| ---------- | ------------------------------------------------------- |
+| 语言       | TypeScript                                              |
+| 运行时     | Node.js 24                                              |
+| 包管理     | Yarn 4，node-modules linker                             |
+| 仓库       | Yarn Workspaces monorepo                                |
+| 构建       | Rspack，输出可直接运行的 CJS bundle                     |
 | 命令行框架 | Commander.js，统一 daemon 与 CLI 的参数、帮助和版本行为 |
-| 桌面界面 | `node-gtk` + GTK4 + libadwaita |
-| UI 状态 | MobX |
-| 本地协议 | Unix Socket + JSON-RPC |
-| 协议类型 | TypeBox + `vscode-jsonrpc` |
-| 硬件抽象 | capability-driven `LightingBackend` contract |
-| asusd 实现 | `@homebridge/dbus-native` 访问 system D-Bus |
-| 配置 | YAML，TypeBox 校验，原子更新 |
-| 测试 | Vitest |
-| 代码质量 | TypeScript、Oxlint、Oxfmt |
-| 任务入口 | tiny CLI / `project.tiny` |
-| 服务管理 | systemd 用户服务 |
-| 日志 | stdout/stderr 进入 journald |
-| 首发平台 | Arch Linux/CachyOS，随后扩展通用 Linux |
+| 桌面界面   | `node-gtk` + GTK4 + libadwaita                          |
+| UI 状态    | MobX                                                    |
+| 本地协议   | Unix Socket + JSON-RPC                                  |
+| 协议类型   | TypeBox + `vscode-jsonrpc`                              |
+| 硬件抽象   | capability-driven `LightingBackend` contract            |
+| asusd 实现 | `@homebridge/dbus-native` 访问 system D-Bus             |
+| 配置       | YAML，TypeBox 校验，原子更新                            |
+| 测试       | Vitest                                                  |
+| 代码质量   | TypeScript、Oxlint、Oxfmt                               |
+| 任务入口   | tiny CLI / `project.tiny`                               |
+| 服务管理   | systemd 用户服务                                        |
+| 日志       | stdout/stderr 进入 journald                             |
+| 首发平台   | Arch Linux/CachyOS，随后扩展通用 Linux                  |
 
 ### 2.1 为什么使用 systemd 用户服务
 
@@ -118,7 +118,6 @@ agent-glow/
 │   └── backend-asusd/       # asusd D-Bus 发现、能力映射与设备写入
 ├── integrations/
 │   ├── codex/
-│   ├── claude-code/
 │   └── opencode/
 ├── configs/
 │   └── config.example.yaml
@@ -160,7 +159,6 @@ agent-glow event \
 
 ```bash
 agent-glow adapt codex
-agent-glow adapt claude-code
 agent-glow adapt opencode
 ```
 
@@ -184,12 +182,12 @@ daemon 是唯一的业务核心和 backend 编排者，负责：
 
 桌面应用是 daemon 的薄客户端，负责：
 
-- 服务启停与开机自启；
+- 用一个总开关同时管理服务运行与开机启动；
 - 展示设备和真实能力；
-- 编辑状态主题；
-- 实时预览；
-- 管理 Agent 集成；
-- 展示当前状态、活动会话和诊断信息。
+- 编辑状态主题并自动应用；
+- 在独立窗口中实时预览；
+- 管理 Codex、OpenCode 集成；
+- 展示当前活动摘要和诊断信息。
 
 桌面应用不得直接编辑配置文件，也不得访问 backend、D-Bus、HID 或其他硬件接口。所有修改通过 daemon 校验并原子提交。
 
@@ -217,26 +215,22 @@ core 只根据通用能力生成视觉目标。backend 负责把目标映射为�
 
 ```ts
 type SemanticState =
-	| 'idle'
-	| 'working'
-	| 'waiting_permission'
-	| 'success'
-	| 'error'
-	| 'paused';
+	'idle' | 'paused' | 'working' | 'tool_use' | 'waiting_permission' | 'success' | 'error';
 ```
 
 建议默认表现：
 
-| 状态 | 默认灯效 | 生命周期 |
-| --- | --- | --- |
-| `idle` | 恢复并保持系统原始硬件状态 | 无活动租约时 |
-| `working` | 蓝紫色缓慢呼吸 | 持续状态 |
-| `waiting_permission` | 琥珀色较快呼吸 | 持续到授权或取消 |
-| `success` | 绿色柔和闪现后回落 | 瞬态，默认 1.5 秒 |
-| `error` | 红色双脉冲后保持低亮度 | 瞬态叠加或持续错误 |
-| `paused` | 暖白低亮度静态 | 持续状态 |
+| 状态                 | 默认灯效                   | 生命周期           |
+| -------------------- | -------------------------- | ------------------ |
+| `idle`               | 恢复并保持系统原始硬件状态 | 无活动租约时       |
+| `working`            | 蓝紫色缓慢呼吸             | 持续状态           |
+| `tool_use`           | 青蓝色较快呼吸             | 工具调用期间       |
+| `waiting_permission` | 琥珀色较快呼吸             | 持续到授权或取消   |
+| `success`            | 绿色柔和闪现后回落         | 瞬态，默认 1.5 秒  |
+| `error`              | 红色双脉冲后保持低亮度     | 瞬态叠加或持续错误 |
+| `paused`             | 暖白低亮度静态             | 持续状态           |
 
-主动状态的默认效果只是预设，用户可在 UI 中修改；`idle` 不提供主题配置。
+主动状态的默认效果只是默认参数，用户可在 UI 中修改；基础状态不提供主题配置。
 
 ### 5.2 标准事件
 
@@ -269,7 +263,7 @@ daemon 为每个会话维护租约，避免多个终端互相覆盖后无法恢�
 默认优先级：
 
 ```text
-error > waiting_permission > success > working > paused > idle
+error > waiting_permission > success > tool_use > working > paused > idle
 ```
 
 规则：
@@ -279,7 +273,7 @@ error > waiting_permission > success > working > paused > idle
 3. 同优先级由最近更新时间决定；
 4. SessionEnd 或显式 `leave` 立即释放；
 5. 未正常结束的租约在超时后自动回收；
-6. UI 预览使用独立的高优先级短租约，关闭页面或超时后自动恢复；
+6. UI 预览使用独立的高优先级短租约，关闭预览窗口或超时后自动恢复；
 7. 后续允许用户调整优先级，但首版先固定，减少配置复杂度。
 
 ## 6. 灯效与动画引擎
@@ -293,7 +287,7 @@ interface VisualState {
 	readonly color: RgbColor;
 	readonly intensity: number; // 0.0 - 1.0，软件强度
 	readonly hardwareBrightness: number;
-	readonly effect: 'static' | 'breathe' | 'pulse' | 'firmware';
+	readonly effect: 'static' | 'breathe' | 'stream' | 'pulse' | 'firmware';
 	readonly periodMs: number;
 	readonly transitionMs: number;
 }
@@ -311,7 +305,7 @@ interface VisualState {
 
 ### 6.2 平滑过渡
 
-状态切换默认使用 300 毫秒交叉渐变，范围可配置为 0–2000 毫秒。
+状态切换默认使用 120 毫秒交叉渐变，范围可配置为 0–2000 毫秒。
 
 颜色插值不能直接在 8 位 sRGB 数值上做线性运算。建议流程：
 
@@ -360,12 +354,12 @@ intensity(t) = min + (max - min) × (1 - cos(2πt / period)) / 2
 
 统一主题按设备能力映射，Aura 和 Slash 只是首个 backend 的实例：
 
-| 目标效果 | 单区 RGB（如 Aura） | 固件效果设备（如 Slash） | 无 RGB，仅亮度 |
-| --- | --- | --- | --- |
-| 静态色 | 静态颜色 | 选择最接近的固件样式或仅开关 | 固定亮度 |
-| 呼吸 | 固件 Breathe 或软件 RGB 帧 | 固件 Pulse/Flow 等最接近效果 | 亮度脉冲，若安全 |
-| 渐变 | 软件 RGB 帧 | 使用 Slash 已支持动画 | 不支持，回退静态 |
-| 成功脉冲 | 软件短动画 | 临时动画后恢复 | 短亮度变化 |
+| 目标效果 | 单区 RGB（如 Aura）        | 固件效果设备（如 Slash）     | 无 RGB，仅亮度   |
+| -------- | -------------------------- | ---------------------------- | ---------------- |
+| 静态色   | 静态颜色                   | 选择最接近的固件样式或仅开关 | 固定亮度         |
+| 呼吸     | 固件 Breathe 或软件 RGB 帧 | 固件 Pulse/Flow 等最接近效果 | 亮度脉冲，若安全 |
+| 渐变     | 软件 RGB 帧                | 使用 Slash 已支持动画        | 不支持，回退静态 |
+| 成功脉冲 | 软件短动画                 | 临时动画后恢复               | 短亮度变化       |
 
 如果能力不足，backend 返回明确的降级说明，UI 展示实际效果，而不是假装完整支持。
 
@@ -394,24 +388,24 @@ $XDG_RUNTIME_DIR/agent-glow/daemon.sock
 
 首期 RPC：
 
-| 方法 | 用途 |
-| --- | --- |
-| `initialize` | 协商协议版本和客户端能力 |
-| `daemon.getStatus` | 服务、配置、设备和动画状态 |
-| `device.list` | 列出设备及真实能力 |
-| `device.config.get` | 获取设备实现注册的配置描述与当前运行时值 |
-| `device.config.update` | 校验并更新设备运行时配置 |
-| `event.emit` | 提交标准语义事件 |
-| `event.clear` | 清理来源或会话租约 |
-| `state.listActive` | 查看当前活动租约与仲裁结果 |
-| `profile.list` | 获取状态主题 |
-| `config.get` | 读取当前配置 |
-| `config.validate` | 验证但不保存 |
-| `config.update` | 原子保存并平滑应用 |
-| `preview.start` | 创建有 TTL 的预览租约 |
-| `preview.update` | 更新预览目标，不重置当前插值 |
-| `preview.stop` | 停止预览并平滑恢复 |
-| `diagnostics.get` | 获取 backend、降级和错误摘要 |
+| 方法                   | 用途                                     |
+| ---------------------- | ---------------------------------------- |
+| `initialize`           | 协商协议版本和客户端能力                 |
+| `daemon.getStatus`     | 服务、配置、设备和动画状态               |
+| `device.list`          | 列出设备及真实能力                       |
+| `device.config.get`    | 获取设备实现注册的配置描述与当前运行时值 |
+| `device.config.update` | 校验并更新设备运行时配置                 |
+| `event.emit`           | 提交标准语义事件                         |
+| `event.clear`          | 清理来源或会话租约                       |
+| `state.listActive`     | 查看当前活动租约与仲裁结果               |
+| `profile.list`         | 获取状态主题                             |
+| `config.get`           | 读取当前配置                             |
+| `config.validate`      | 验证但不保存                             |
+| `config.update`        | 原子保存并平滑应用                       |
+| `preview.start`        | 创建有 TTL 的预览租约                    |
+| `preview.update`       | 更新预览目标，不重置当前插值             |
+| `preview.stop`         | 停止预览并平滑恢复                       |
+| `diagnostics.get`      | 获取 backend、降级和错误摘要             |
 
 通知：
 
@@ -438,54 +432,66 @@ $XDG_CONFIG_HOME/agent-glow/config.yaml
 version: 1
 
 daemon:
-  frameRate: 10
-  staleSessionTimeoutMs: 300000
+    frameRate: 10
+    staleSessionTimeoutMs: 300000
 
 rendering:
-  colorSpace: linear-rgb
-  restoreOnExit: true
-  transitionMs: 300
+    colorSpace: linear-rgb
+    restoreOnExit: true
+    transitionMs: 120
 
 profiles:
-  working:
-    color: "#5865F2"
-    effect: breathe
-    hardwareIntensity: 0.7
-    minimumIntensity: 0.08
-    maximumIntensity: 1
-    periodMs: 2200
-  waiting_permission:
-    color: "#FF9F1C"
-    effect: breathe
-    hardwareIntensity: 1
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    periodMs: 900
-  success:
-    color: "#35C759"
-    effect: pulse
-    hardwareIntensity: 0.9
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    durationMs: 900
-    pulseCount: 1
-  error:
-    color: "#FF3B30"
-    effect: pulse
-    hardwareIntensity: 1
-    minimumIntensity: 0.15
-    maximumIntensity: 1
-    durationMs: 1000
-    pulseCount: 2
-  paused:
-    color: "#FFF4D6"
-    effect: static
-    hardwareIntensity: 0.3
-    intensity: 0.25
+    working:
+        startColor: '#5865F2'
+        endColor: '#5865F2'
+        effect: breathe
+        hardwareIntensity: 0.65
+        minimumIntensity: 0.22
+        maximumIntensity: 0.72
+        periodMs: 2800
+    tool_use:
+        startColor: '#00B8D9'
+        endColor: '#5865F2'
+        effect: stream
+        hardwareIntensity: 0.8
+        minimumIntensity: 0.3
+        maximumIntensity: 0.9
+        periodMs: 1000
+    waiting_permission:
+        startColor: '#FF9F1C'
+        endColor: '#FF9F1C'
+        effect: breathe
+        hardwareIntensity: 0.85
+        minimumIntensity: 0.2
+        maximumIntensity: 0.9
+        periodMs: 1000
+    success:
+        startColor: '#35C759'
+        endColor: '#35C759'
+        effect: pulse
+        hardwareIntensity: 0.75
+        minimumIntensity: 0.15
+        maximumIntensity: 1
+        durationMs: 1000
+        pulseCount: 1
+    error:
+        startColor: '#FF3B30'
+        endColor: '#FF3B30'
+        effect: pulse
+        hardwareIntensity: 0.9
+        minimumIntensity: 0.15
+        maximumIntensity: 1
+        durationMs: 1200
+        pulseCount: 2
+    paused:
+        color: '#FFF4D6'
+        effect: static
+        hardwareIntensity: 0.18
+        intensity: 0.18
 
 devices:
-  "backend:stable-device-id":
-    states.working.brightness: 128
+    'backend:stable-device-id':
+        states.working.brightness: 128
 ```
 
 仓库中的 `configs/config.example.yaml` 是由同一 TypeBox schema 持续验证的完整默认示例。
@@ -504,53 +510,52 @@ devices:
 
 ## 10. 配置界面
 
-界面采用 GTK4/libadwaita，首版页面：
+界面采用 GTK4/libadwaita 和与 VoxSpell 一致的左右双栏结构。左侧导航固定为概览、
+灯光样式、设备、Agent 集成、关于，右侧显示对应内容；诊断能力合并在概览中。窄窗口使用
+`AdwNavigationSplitView` 的折叠行为。完整产品约束见 `docs/desktop-product-plan.md`。
 
 ### 10.1 概览
 
-- daemon 运行状态；
-- systemd 启用状态；
-- 当前语义状态和来源；
-- 当前颜色、效果和降级结果；
-- 发现的 backend、设备和真实能力；
-- 最近错误。
+- 只提供一个服务总开关；
+- 开启时启动服务并启用开机启动；
+- 关闭时停止服务并禁用开机启动；
+- 展示当前是否有活动任务、当前颜色与效果、已发现设备和最近错误；
+- 不把内部状态机名称或恢复快照概念暴露给用户。
 
-### 10.2 状态主题
+### 10.2 灯光样式
 
-- 为每个主动语义状态选择颜色；
-- 选择 Static、Breathe、Pulse 或设备原生效果；
-- 设置周期、强度范围和过渡时间；
-- 实时预览；
-- 恢复默认值。
+- 每个任务阶段先选择动画类型，再显示对应颜色与参数；
+- 静态动画使用单色；呼吸、数据流和脉冲使用起始、终止颜色，并以动画进度在线性 RGB 中插值；
+- 表单修改经过短节流后调用完整 `config.update`，配置即时生效，不提供保存按钮；
+- 多次连续修改采用 latest-wins，旧请求结果不得覆盖新输入；
+- daemon 拒绝配置时保留用户输入并显示字段错误，硬件继续使用最后一次成功配置；
+- 只提供“恢复默认”，不实现内置或用户预设。
 
-颜色选择器更新时只发送新的预览目标。daemon 从当前渲染位置平滑过渡，UI 不发送逐帧颜色。
+### 10.3 独立预览窗口
 
-### 10.3 设备
+- 预览不嵌入设置页面，单独打开窗口；
+- 窗口自动循环各阶段，不提供手动阶段选择，并实时展示带描边的阶段提示以及对应的颜色、亮度和动画效果；
+- UI 只提交预览目标并消费 daemon 的渲染结果，不复制动画计算；
+- 关闭窗口、RPC 断开或 TTL 到期时，daemon 自动停止预览并恢复。
 
-- 启用或禁用某个设备；
-- 展示 backend 返回的颜色、亮度、分区和固件效果能力；
-- 调整固定硬件亮度；
-- 查看某个主题在该设备上的实际降级方式；
-- 执行短时设备测试。
+### 10.4 设备
 
-### 10.4 集成
+- 每台设备都有独立启用项，首次发现时默认启用；
+- 设备名称、说明、能力、字段顺序、控件类型、取值范围和默认值全部来自运行时注册；
+- UI 只渲染 TypeBox 契约描述的通用字段，不按 Aura、Slash 或其他设备类型分支；
+- 当新设备缺少展示或配置能力时，先扩展设备注册契约和校验，再复用通用表单。
 
-- Codex、Claude Code、OpenCode 的检测状态；
-- 生成或安装 Hook 配置；
-- 展示将要修改的文件和 diff；
-- 一键移除；
-- 提供通用 CLI 示例。
+### 10.5 Agent 集成
 
-集成安装属于显式外部配置变更，UI 必须先展示目标和内容，再由用户确认。
+- 首版只显示 Codex 和 OpenCode；
+- 展示检测状态、安装或移除入口以及通用 CLI 示例；
+- 外部 Agent 配置不属于应用内部的即时配置：写入前必须展示目标文件和 diff，并由用户确认。
 
-### 10.5 诊断
+### 10.6 概览诊断与关于
 
-- daemon、Node.js、backend 版本；backend-asusd 额外展示 asusd 版本；
-- backend 设备和能力摘要；backend-asusd 额外展示脱敏 D-Bus 摘要；
-- 活动租约；
-- 最近降级与写入错误；
-- 导出脱敏诊断文本；
-- 打开 journald 查看命令。
+- 概览页展示 daemon、Node.js、backend 版本、设备能力摘要、活动会话、最近降级与错误；
+- 支持导出脱敏诊断文本并给出 journald 查看命令；
+- 关于页展示版本、项目说明、许可证和相关链接。
 
 ## 11. Agent 集成
 
@@ -560,20 +565,21 @@ devices:
 
 目标映射以 Codex 实际支持的 Hook 事件为准。规划中的典型映射：
 
-| 生命周期 | AgentGlow |
-| --- | --- |
-| 用户提交任务 | `working enter` |
-| 请求授权 | `waiting_permission enter` |
-| 授权完成 | `waiting_permission leave`，恢复 `working` |
-| 任务成功结束 | `success pulse`，然后释放 `working` |
-| 任务失败 | `error pulse` |
-| 会话结束 | 清理会话全部租约 |
+| 生命周期     | AgentGlow                                   |
+| ------------ | ------------------------------------------- |
+| 用户提交任务 | `working enter`                             |
+| 请求授权     | `waiting_permission enter`                  |
+| 开始调用工具 | 清理 `waiting_permission`，`tool_use enter` |
+| 工具调用结束 | `tool_use leave`，恢复 `working`            |
+| 任务成功结束 | `success pulse`，然后释放 `working`         |
+| 任务失败     | `error pulse`                               |
+| 会话结束     | 清理会话全部租约                            |
 
 如果某个 Codex 版本没有对应 Hook，不在适配器中猜测，而是降级到现有事件。
 
-### 11.2 Claude Code 与 OpenCode
+### 11.2 OpenCode
 
-采用同一模型，各自在 `integrations/` 中维护：
+采用同一模型，在 `integrations/opencode/` 中独立维护：
 
 - 原始事件解析；
 - session ID 提取；
@@ -608,8 +614,9 @@ WantedBy=graphical-session.target
 注意：
 
 - `asusd.service` 是系统服务，不能依赖用户 unit 的 `After=` 跨 systemd manager 排序；daemon 必须处理 D-Bus 尚未就绪和服务重启；
-- 首次从桌面应用启用时执行 `systemctl --user enable --now agent-glow.service`；
-- 禁用时停止 daemon，并尽力恢复设备状态；
+- 桌面应用打开总开关时执行 `systemctl --user enable --now agent-glow.service`；
+- 关闭总开关时执行 `systemctl --user disable --now agent-glow.service`，daemon 停止前尽力恢复设备状态；
+- UI 不拆分“当前运行”和“开机启动”两个控制项；读取到不一致状态时刷新真实状态并给出诊断；
 - 发布包安装 unit，但不应在包安装脚本中擅自为所有用户启用；
 - daemon 处理 SIGTERM/SIGINT，停止动画、清理 Socket、恢复设备后退出；
 - 恢复过程有严格超时，不能阻塞 systemd 停止。
@@ -703,7 +710,7 @@ GU405AR 首轮验收：
 
 ```text
 yarn tiny dev
-yarn tiny dev/desktop
+yarn tiny desktop
 yarn tiny build
 yarn tiny test
 yarn tiny typecheck
@@ -757,14 +764,9 @@ Linux staging root：
 
 ### 15.4 许可证
 
-建议使用 MPL-2.0：
-
-- 与 `asusctl` 社区生态相容；
-- 允许商业和非商业使用；
-- 修改已有 MPL 文件时保持修改开放；
-- 不强制整个应用采用同一许可证。
-
-若项目不复制 `asusctl` 源码，只使用公开 D-Bus 接口，也可以改用 Apache-2.0。仓库初始化阶段需正式确定，避免后续文件来源不清。
+项目作者为 Geequlim。与 VoxSpell 保持一致，AgentGlow 采用 PolyForm Noncommercial
+License 1.0.0，允许非商业用途并禁止商业使用。仓库根目录提供完整 `LICENSE`，
+`NOTICE` 包含必需版权声明；发布包必须同时携带这两个文件。
 
 ## 16. 分阶段实施
 
@@ -800,21 +802,23 @@ Linux staging root：
 
 ### M3：配置界面
 
-- 概览、状态主题、设备和诊断页；
-- daemon systemd 管理；
-- 预览租约；
-- 配置校验、原子更新和回滚。
+- 左右双栏和六个固定页面；
+- 单一服务总开关；
+- 灯光样式即时生效与恢复默认；
+- 注册驱动的设备表单；
+- 独立预览窗口和预览租约；
+- 配置校验、原子更新和回滚；
+- Codex、OpenCode 集成检测入口。
 
 验收：UI 不直接写硬件或配置文件，关闭预览后自动恢复。
 
 ### M4：Agent 适配
 
 - Codex 适配器与安装流程；
-- Claude Code 适配器；
 - OpenCode 适配器；
 - 通用 CLI 文档和 fixtures。
 
-验收：三个来源可以同时工作，异常退出不会永久占用状态。
+验收：两个来源可以同时工作，异常退出不会永久占用状态。
 
 ### M5：发布
 

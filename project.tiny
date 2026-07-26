@@ -48,10 +48,12 @@ develop:
         - yarn --cwd apps/desktop node-gtk generate-types Gtk-4.0 Adw-1 --outdir .cache/types
         - yarn --cwd apps/desktop rspack build
     - name: desktop
-      description: 构建并启动 GTK 桌面应用
+      description: 构建完整开发版本、安装用户服务 unit 并启动 GTK 桌面应用
       command:
-        - yarn --cwd apps/desktop node-gtk generate-types Gtk-4.0 Adw-1 --outdir .cache/types
-        - yarn --cwd apps/desktop rspack build
+        - yarn tiny build
+        - node scripts/manage-dev-service.mts install
+        - node scripts/install-dev-desktop-entry.mts
+        - systemctl --user try-restart agent-glow.service
         - node --enable-source-maps apps/desktop/dist/index.cjs
     - name: smoke
       description: 验证 daemon 与 CLI 构建产物

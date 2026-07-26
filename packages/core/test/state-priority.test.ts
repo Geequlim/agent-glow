@@ -9,6 +9,7 @@ describe('selectHighestPriorityState', () => {
 
 	it('uses the priority defined by the technical plan', () => {
 		expect(selectHighestPriorityState(['working', 'paused', 'success'])).toBe('success');
+		expect(selectHighestPriorityState(['working', 'tool_use'])).toBe('tool_use');
 		expect(selectHighestPriorityState(['error', 'waiting_permission'])).toBe('error');
 	});
 });

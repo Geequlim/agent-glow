@@ -27,6 +27,14 @@ describe('color space primitives', () => {
 		expect(midpoint.red).toBeLessThan(190);
 	});
 
+	it('preserves exact colors at interpolation boundaries', () => {
+		const from = { red: 55, green: 48, blue: 255 };
+		const to = { red: 88, green: 112, blue: 254 };
+
+		expect(interpolateColorLinear(from, to, 0)).toBe(from);
+		expect(interpolateColorLinear(from, to, 1)).toBe(to);
+	});
+
 	it('quantizes channels and unit values to stable 8-bit steps', () => {
 		expect(quantizeColor({ red: 1.4, green: 254.6, blue: 300 })).toEqual({
 			red: 1,

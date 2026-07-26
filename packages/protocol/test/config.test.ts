@@ -9,15 +9,26 @@ const validConfig = {
 	rendering: { colorSpace: 'linear-rgb', restoreOnExit: true, transitionMs: 300 },
 	profiles: {
 		working: {
-			color: '#5865F2',
+			startColor: '#5865F2',
+			endColor: '#5865F2',
 			effect: 'breathe',
 			hardwareIntensity: 0.7,
 			minimumIntensity: 0.08,
 			maximumIntensity: 1,
 			periodMs: 2200,
 		},
+		tool_use: {
+			startColor: '#3730FF',
+			endColor: '#5870FE',
+			effect: 'stream',
+			hardwareIntensity: 0.8,
+			minimumIntensity: 0.3,
+			maximumIntensity: 0.9,
+			periodMs: 1000,
+		},
 		waiting_permission: {
-			color: '#FF9F1C',
+			startColor: '#FF9F1C',
+			endColor: '#FF9F1C',
 			effect: 'breathe',
 			hardwareIntensity: 1,
 			minimumIntensity: 0.15,
@@ -25,7 +36,8 @@ const validConfig = {
 			periodMs: 900,
 		},
 		success: {
-			color: '#35C759',
+			startColor: '#35C759',
+			endColor: '#35C759',
 			effect: 'pulse',
 			hardwareIntensity: 0.9,
 			minimumIntensity: 0.15,
@@ -34,7 +46,8 @@ const validConfig = {
 			pulseCount: 1,
 		},
 		error: {
-			color: '#FF3B30',
+			startColor: '#FF3B30',
+			endColor: '#FF3B30',
 			effect: 'pulse',
 			hardwareIntensity: 1,
 			minimumIntensity: 0.15,
@@ -80,7 +93,7 @@ describe('AgentGlowConfigSchema', () => {
 				...validConfig,
 				profiles: {
 					...validConfig.profiles,
-					working: { ...validConfig.profiles.working, color: 'purple' },
+					working: { ...validConfig.profiles.working, startColor: 'purple' },
 				},
 			}),
 		).toBe(false);

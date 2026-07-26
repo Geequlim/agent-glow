@@ -4,7 +4,10 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
+		"@agent-glow/config": "workspace:^",
+		"@agent-glow/protocol": "workspace:^",
 		"commander": "15.0.0",
+		"mobx": "6.16.1",
 		"node-gtk": "4.1.1"
 	},
 	"devDependencies": {

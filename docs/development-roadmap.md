@@ -35,23 +35,23 @@ Agent 适配器
 1. 每个阶段都必须产生一个可运行、可测试的增量。
 2. fake backend 先于真实硬件，核心逻辑不能依赖 D-Bus 才能测试。
 3. CLI 先于 Desktop，先证明协议和 daemon，再为稳定能力制作界面。
-4. Codex 适配器先单独跑通，再复用模式实现 Claude Code 和 OpenCode。
+4. Codex 适配器先单独跑通，再复用模式实现 OpenCode；首版不接入 Claude Code。
 5. 从 P2 固化硬件无关 backend contract，但不提前实现第二个生产 backend、插件 SDK 或逐键 RGB。
 6. 当前阶段验收未通过时，不并行扩张下一阶段功能范围。
 
 ## 2. 版本与里程碑
 
-| 里程碑 | 可交付结果 | 是否需要真实硬件 |
-| --- | --- | --- |
-| P0 风险验证 | 关键依赖和外部接口有可运行探针，技术决策冻结 | 是 |
-| P1 工程基础 | monorepo、质量门禁和构建链可用 | 否 |
-| P2 无硬件闭环 | CLI 事件可经 daemon 驱动 fake backend | 否 |
-| P3 首个生产 backend | backend-asusd 的 Aura/Slash 可发现、静态控制并恢复 | 是 |
-| P4 动画与可靠性 | 多会话仲裁、平滑动画、背压和重连可用 | 是 |
-| P5 配置与服务 | YAML 配置、RPC 更新、systemd 用户服务可用 | 是 |
-| P6 Desktop | 用户可通过 GTK 界面配置、预览和诊断 | 是 |
-| P7 Agent 集成 | Codex、Claude Code、OpenCode 可稳定接入 | 部分 |
-| P8 发布候选 | tar.zst 和 AUR 包通过安装、升级、卸载测试 | 是 |
+| 里程碑              | 可交付结果                                         | 是否需要真实硬件 |
+| ------------------- | -------------------------------------------------- | ---------------- |
+| P0 风险验证         | 关键依赖和外部接口有可运行探针，技术决策冻结       | 是               |
+| P1 工程基础         | monorepo、质量门禁和构建链可用                     | 否               |
+| P2 无硬件闭环       | CLI 事件可经 daemon 驱动 fake backend              | 否               |
+| P3 首个生产 backend | backend-asusd 的 Aura/Slash 可发现、静态控制并恢复 | 是               |
+| P4 动画与可靠性     | 多会话仲裁、平滑动画、背压和重连可用               | 是               |
+| P5 配置与服务       | YAML 配置、RPC 更新、systemd 用户服务可用          | 是               |
+| P6 Desktop          | 用户可通过 GTK 界面配置、预览和诊断                | 是               |
+| P7 Agent 集成       | Codex、OpenCode 可稳定接入                         | 部分             |
+| P8 发布候选         | tar.zst 和 AUR 包通过安装、升级、卸载测试          | 是               |
 
 P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless beta；P6–P8 构成首个公开版本。
 
@@ -61,14 +61,14 @@ P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless bet
 
 ### 3.1 任务
 
-- [ ] 确定许可证：MPL-2.0 或 Apache-2.0，并记录选择理由。
+- [x] 与 VoxSpell 保持一致，采用 PolyForm Noncommercial 1.0.0，并记录选择理由。
 - [x] 记录开发机的 Node.js、Yarn、GTK4、libadwaita、GObject Introspection、asusd 版本。
 - [x] 用最小 TypeScript/JavaScript 探针验证 `@homebridge/dbus-native` 能连接 system D-Bus。
 - [x] 枚举 asusd ObjectManager 对象，保存经过脱敏的 Aura/Slash 接口、属性和方法样本。
 - [x] 验证一次 Aura 状态读取、静态颜色写入和原状态恢复。
 - [x] 验证一次 Slash 状态读取、支持操作写入和原状态恢复。
 - [x] 用最小 `node-gtk` 程序在 Node.js 24 下打开 GTK4/libadwaita 窗口。
-- [ ] 核对 Codex、Claude Code、OpenCode 当前真实可用的 Hook 事件、输入格式、超时行为和配置位置。
+- [x] 核对 Codex、OpenCode 当前真实可用的 Hook 事件、输入格式、超时行为和配置位置。
 - [x] 决定发布包是携带固定 Node.js runtime，还是依赖系统 Node.js；记录 ABI 与包体积取舍。
 
 探针代码放入 `scripts/probes/`，它们只用于开发验证，不进入 daemon 生产代码。
@@ -102,7 +102,7 @@ P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless bet
 - [x] 配置 Rspack，将 daemon 和 CLI 输出为可直接运行的 CJS bundle。
 - [x] 使用 Commander.js 统一 daemon 与 CLI 的命令行入口。
 - [x] 建立 `project.tiny` 的 `build`、`test`、`typecheck`、`lint`、`format`、`smoke` 入口。
-- [ ] 确定许可证并添加许可证文件。
+- [x] 确定许可证并添加 `LICENSE` 与 `NOTICE`。
 
 ### 4.2 验收门槛
 
@@ -192,15 +192,15 @@ CLI → Unix Socket → JSON-RPC → 租约仲裁 → fake backend
 - [x] 实现 Aura `LedModeData` 完整快照。
 - [x] 实现 Aura 单区静态颜色；开关和硬件亮度按实际需求延后。
 - [x] 把 Slash 映射为独立设备，并声明 `power`、`brightness` 和
-  `firmware_effect` 通用能力。
+      `firmware_effect` 通用能力。
 - [x] 实现 Slash 的完整状态快照与恢复：`Enabled`、`Brightness`、
-  `Interval`、`Mode`。
+      `Interval`、`Mode`。
 - [x] 从 Slash 已确认动画中选择与语义直接相关的最小子集，不在通用协议中暴露
-  ROG 模式编号，也不为测试轮播全部枚举。
+      ROG 模式编号，也不为测试轮播全部枚举。
 - [x] 用五种主动状态及 idle 快照恢复的硬件冒烟测试验证语义映射、亮度、间隔和完整恢复。
 - [x] 实现能力降级结果，让 CLI 和 diagnostics 能看到“请求效果”和“实际效果”。
 - [x] 允许设备实现通过 TypeBox 通用描述注册运行时配置项，并由 daemon 统一校验；
-  Slash 为五种主动语义状态注册动画、亮度和间隔；`idle` 恢复系统快照。
+      Slash 为五种主动语义状态注册动画、亮度和间隔；`idle` 恢复系统快照。
 - [x] daemon 启动时保存快照，正常停止时恢复。
 - [x] 一个设备失败时隔离错误，不停止其他设备。
 - [x] 保留 fake backend。
@@ -227,27 +227,27 @@ P3 已完成，并统一标记内部开发版本 `0.1.0-dev`，用于日常真�
 按以下五个可独立验收的小阶段推进，不并行铺开：
 
 1. **P4-A：确定性动画数学**
-   - [x] 已完成。
-   - 实现 linear RGB 与 sRGB 转换、量化、缓动函数和可注入单调时钟。
-   - 用虚拟时钟证明呼吸周期连续、强度不越界、测试不依赖真实等待。
+    - [x] 已完成。
+    - 实现 linear RGB 与 sRGB 转换、量化、缓动函数和可注入单调时钟。
+    - 用虚拟时钟证明呼吸周期连续、强度不越界、测试不依赖真实等待。
 2. **P4-B：有界设备提交器**
-   - [x] 已完成。
-   - 每台设备只允许一个进行中的写入，并且等待区只保留最新目标。
-   - 增加量化帧去重；用慢 fake backend 证明没有并发写入和无界队列。
+    - [x] 已完成。
+    - 每台设备只允许一个进行中的写入，并且等待区只保留最新目标。
+    - 增加量化帧去重；用慢 fake backend 证明没有并发写入和无界队列。
 3. **P4-C：语义过渡与瞬态**
-   - [x] 已完成。
-   - 从目标改变瞬间的当前插值位置开始交叉渐变。
-   - 实现连续相位呼吸、success 单脉冲和 error 双脉冲。
-   - 验证高优先级瞬态结束后恢复当前最高优先级持续状态。
+    - [x] 已完成。
+    - 从目标改变瞬间的当前插值位置开始交叉渐变。
+    - 实现连续相位呼吸、success 单脉冲和 error 双脉冲。
+    - 验证高优先级瞬态结束后恢复当前最高优先级持续状态。
 4. **P4-D：生命周期与故障恢复**
-   - [x] 已完成。
-   - 回收 stale session；为连续失败增加有界退避和去重日志。
-   - 监听 asusd D-Bus 名称所有者变化，重新发现设备并恢复当前逻辑目标。
-   - 处理睡眠、唤醒和 daemon 停止恢复。
+    - [x] 已完成。
+    - 回收 stale session；为连续失败增加有界退避和去重日志。
+    - 监听 asusd D-Bus 名称所有者变化，重新发现设备并恢复当前逻辑目标。
+    - 处理睡眠、唤醒和 daemon 停止恢复。
 5. **P4-E：真实硬件验收**
-   - [x] 已完成。
-   - 先跑 10 分钟 Aura 软件呼吸，再验证快速重定向和完整状态序列。
-   - 手动重启 asusd 验证重新发现；最后验证两个真实 CLI session 的仲裁。
+    - [x] 已完成。
+    - 先跑 10 分钟 Aura 软件呼吸，再验证快速重定向和完整状态序列。
+    - 手动重启 asusd 验证重新发现；最后验证两个真实 CLI session 的仲裁。
 
 每个阶段都先完成 fake/fixture 自动测试，再执行必要的真实硬件测试；P4 不增加 CI。
 
@@ -267,7 +267,7 @@ P3 已完成，并统一标记内部开发版本 `0.1.0-dev`，用于日常真�
 
 - [x] 10 Hz 软件呼吸连续运行 10 分钟，无 D-Bus 请求堆积。
 - [x] 快速连续改变目标颜色时无写入失败或目标积压。
-- [x] `working → waiting_permission → working → success → working → idle` 连续执行。
+- [x] `working → waiting_permission → tool_use → working → success → working → idle` 连续执行。
 - [x] 重启 asusd 后 daemon 能重新发现设备并恢复当前逻辑目标。
 - [x] 两个真实 CLI session 的优先级和清理行为正确。
 
@@ -290,14 +290,14 @@ P5 按以下五个可独立验收的阶段顺序推进，不并行铺开。配�
 
 - [x] 在 `packages/protocol` 定义硬件无关的 v1 配置 schema 和类型。
 - [x] 配置包含 daemon 参数、渲染参数、五种主动语义 profile，以及按稳定设备 ID
-  保存的设备注册配置值；`idle` 表示系统默认状态，不是可配置灯效。通用 schema
-  不出现 asusd、Aura、Slash 或固件模式编号。
+      保存的设备注册配置值；`idle` 表示系统默认状态，不是可配置灯效。通用 schema
+      不出现 asusd、Aura、Slash 或固件模式编号。
 - [x] 创建 `packages/config`，负责默认值、XDG 路径和 YAML 边界。
 - [x] 默认路径为 `$XDG_CONFIG_HOME/agent-glow/config.yaml`，未设置时回退到
-  `~/.config/agent-glow/config.yaml`；测试可注入环境和 home，不读取真实用户目录。
+      `~/.config/agent-glow/config.yaml`；测试可注入环境和 home，不读取真实用户目录。
 - [x] 提供 `configs/config.example.yaml`，内容必须由同一 schema 校验通过。
 - [x] schema 版本固定为 `1`；保留显式迁移分发入口，未知版本直接拒绝，P5
-  不实现猜测性迁移。
+      不实现猜测性迁移。
 
 验收：默认配置、示例 YAML、未知字段、非法范围、未知版本和 XDG 路径均有确定性测试。
 
@@ -315,12 +315,12 @@ P5 按以下五个可独立验收的阶段顺序推进，不并行铺开。配�
 
 - [x] daemon 启动时加载配置，并把已发现设备的持久值交给设备注册 schema 校验。
 - [x] 实现 `config.get`、`config.validate`、`config.update` RPC；更新以完整候选配置
-  为单位，不在 v1 引入复杂 patch 语义。
+      为单位，不在 v1 引入复杂 patch 语义。
 - [x] CLI 使用 Commander.js 添加 `config show`、`config validate <file>` 和
-  `config apply <file>`。
+      `config apply <file>`。
 - [x] `device.config.update` 进入同一个配置事务，不再只修改 backend 内存。
 - [x] 事务顺序固定为：解析与校验候选配置、准备临时文件、应用运行态、原子提交；
-  应用或提交失败时恢复旧内存配置、旧设备配置和旧视觉目标。
+      应用或提交失败时恢复旧内存配置、旧设备配置和旧视觉目标。
 - [x] 成功更新当前语义 profile 时，从动画引擎当前帧平滑过渡，不重启动画时间线。
 - [x] 未连接设备的持久配置按稳定设备 ID 保留；设备重新出现后再执行其注册配置校验。
 
@@ -330,17 +330,17 @@ P5 按以下五个可独立验收的阶段顺序推进，不并行铺开。配�
 ### 8.4 P5-D：启动韧性与 systemd 用户服务
 
 - [x] daemon 在 asusd 尚未出现时仍创建 Socket 并进入 degraded/unavailable 状态，
-  服务出现后自动发现设备并应用当前逻辑目标。
+      服务出现后自动发现设备并应用当前逻辑目标。
 - [x] 为停止时的调度器收敛、快照恢复和 backend 关闭设置严格的总超时，超时后
-  记录错误并有界退出。
+      记录错误并有界退出。
 - [x] 添加生产用 `agent-glow.service` 用户 unit，不声明对系统级
-  `asusd.service` 的无效排序依赖。
+      `asusd.service` 的无效排序依赖。
 - [x] CLI 使用 Commander.js 添加 `service status/start/stop/restart/enable/disable`，
-  仅用参数数组调用 `systemctl --user`，不经过 shell。
+      仅用参数数组调用 `systemctl --user`，不经过 shell。
 - [x] 提供显式的本地开发安装/移除入口用于实测 unit；安装 unit 后不自动 enable
-  或 start，所有外部状态修改都由用户明确执行。
+      或 start，所有外部状态修改都由用户明确执行。
 - [x] daemon 日志只写 stdout/stderr，并提供 `journalctl --user-unit
-  agent-glow.service` 可读取启动、重连、降级和恢复记录。
+agent-glow.service` 可读取启动、重连、降级和恢复记录。
 
 验收：先启动 daemon 后启动 asusd、先启动 asusd 后启动 daemon、重启 asusd、
 重启 daemon、停止和禁用用户服务均得到一致结果；所有操作不需要 sudo。
@@ -349,9 +349,9 @@ P5 按以下五个可独立验收的阶段顺序推进，不并行铺开。配�
 
 - [x] 在临时 XDG 目录完成默认配置、更新、失败回滚和 daemon 重启集成测试。
 - [x] 用 fake backend 验证 systemd 命令构造和退出超时；普通测试不访问真实
-  systemd 或硬件。
+      systemd 或硬件。
 - [ ] 在当前机器显式安装开发 unit，人工执行 enable、start、restart、stop、
-  disable，并检查 journald。
+      disable，并检查 journald。
 - [ ] 在 Aura 与 Slash 上验证配置持久化、服务重启、asusd 晚到和退出快照恢复。
 - [x] 更新配置格式、CLI、用户服务和故障恢复文档。
 
@@ -376,28 +376,42 @@ P5 不创建 Desktop、不写 Agent Hook 安装器、不制作 AUR/发布压缩�
 
 ### 9.1 实现顺序
 
-1. 创建 `apps/desktop`，完成连接状态、断线重连和只读概览。
-2. 实现设备页和 diagnostics 展示。
-3. 实现状态主题编辑、客户端表单校验和 daemon 端最终校验。
-4. 实现 `preview.start/update/stop` 与 TTL 自动恢复。
-5. 实现配置提交、失败提示和恢复默认值。
-6. 实现 systemd 服务状态和显式启停。
-7. 最后实现集成页的检测和安装预览；真正写入外部 Hook 配置放到 P7。
+1. **P6-A（已完成）**：创建 `apps/desktop`，打通构建、测试、空窗口和
+   `yarn tiny desktop` 快捷启动。
+2. **P6-B（已完成）**：建立与 VoxSpell 一致的左右双栏框架。左侧固定为概览、灯光样式、
+   设备、Agent 集成、关于，右侧承载当前页面；诊断能力合并到概览。
+3. **P6-C（已完成）**：实现概览与唯一的服务总开关。开启等价于启动服务并启用开机启动，
+   关闭等价于停止服务并禁用开机启动；界面不提供第二个开关。
+4. **P6-D（已完成）**：实现灯光样式表单。修改经过短节流后自动提交并立即生效，不提供保存
+   按钮；失败时保留输入、标出字段错误，运行态继续使用最后一次成功配置。仅提供
+   “恢复默认”，不实现预设系统。
+5. **P6-E（已完成）**：实现独立预览窗口和 `preview.start/update/stop`。窗口展示当前阶段提示、
+   对应颜色和效果；关闭、断连或 TTL 到期后自动恢复。
+6. **P6-F（已完成）**：实现注册驱动的设备页。设备名称、说明、能力和表单字段全部来自设备
+   注册信息；每台设备均有独立启用项且默认启用。注册信息不足时扩展 TypeBox 契约，
+   不在 UI 中增加 Aura、Slash 或其他硬件类型分支。
+7. **P6-G（已完成）**：实现 Codex、OpenCode 集成检测入口和关于页，并将诊断合并到概览。外部 Hook
+   配置展示目标与 diff，并且只有用户确认后才由 P7 安装器原子写入。
 
 MobX store 只保存 UI 与 RPC 状态。颜色插值、租约、配置落盘、D-Bus 和服务真相仍属于 daemon。
 
-P6-A 的工程壳已建立：`apps/desktop` 可构建并打开 GTK4/libadwaita 空窗口，Command
-入口、GI 类型生成、无显示单元测试和 `yarn tiny desktop` 快捷启动均已接入。窗口
-信息架构与视觉方案将在此可运行基线上另行确定。
+P6 已完成：`apps/desktop` 可构建并打开 GTK4/libadwaita 完整窗口，五页双栏导航、
+服务开关、自动生效样式、daemon 帧预览、注册驱动设备表单、Agent 接入入口，以及
+合并诊断能力的概览和关于页均已接入。Command 入口、GI 类型生成、无显示单元测试和
+`yarn tiny desktop` 快捷启动可用于日常开发验证。
 
 ### 9.2 验收门槛
 
 - 断开 Desktop 不会影响 daemon 和现有灯效。
 - Desktop 不直接访问 D-Bus、不直接编辑 YAML。
+- 页面只有一个服务开关，开与关分别完整改变服务运行和开机启动状态。
+- 所有应用内部配置无需手动保存，连续输入被节流且以最后一次修改为准。
 - 快速拖动颜色选择器只更新预览目标，不从 UI 发送逐帧动画。
 - Desktop 崩溃或断开后，预览租约到期并恢复原状态。
 - daemon 拒绝配置时，界面保留用户输入并显示具体字段错误。
-- UI 不按 Aura/Slash 写死页面；只根据每台设备声明的通用能力展示控制项。
+- UI 不展示内部状态名，不要求用户理解 daemon 的状态机实现。
+- UI 不按 Aura/Slash 写死页面；只根据每台设备注册的通用字段展示信息和配置项。
+- 首版界面不包含预设入口，也不显示 Claude Code 占位项。
 
 ## 10. P7：逐个接入 Agent
 
@@ -405,21 +419,24 @@ P6-A 的工程壳已建立：`apps/desktop` 可构建并打开 GTK4/libadwaita �
 
 ### 10.1 Codex
 
-- [ ] 用 P0 保存的真实 fixtures 实现原始输入解析和事件映射。
-- [ ] session ID 缺失时采用明确的降级策略，不生成永久租约。
-- [ ] 适配命令只依赖 protocol 和 CLI 发送层。
-- [ ] 安装前展示目标文件、旧内容和 diff，用户确认后才写入。
-- [ ] 支持检测、安装、升级和移除。
+- [x] 按官方契约 fixtures 实现原始输入解析和事件映射。
+- [x] session ID 缺失时忽略事件，不生成永久租约。
+- [x] 适配命令只依赖 protocol 和 CLI 发送层。
+- [x] 安装前展示目标文件、旧内容和 diff，用户确认后才写入。
+- [x] 支持检测、安装、幂等升级和只移除自身配置。
 - [ ] 进行多会话、授权、成功、失败和异常终止的真实试用。
 
-Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Claude Code 与 OpenCode。
+Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 OpenCode。
 
-### 10.2 Claude Code 与 OpenCode
+### 10.2 OpenCode
 
-- [ ] 分别维护原始 schema、映射、fixtures 和安装模板。
-- [ ] 不为了统一而抹平三者真实生命周期差异。
-- [ ] 对不可观测状态在 UI 和文档中展示降级说明。
-- [ ] 验证三个来源同时活动时仍使用相同的 daemon 仲裁规则。
+- [x] 独立维护 OpenCode 事件映射、契约测试和全局插件安装模板。
+- [x] 不为了统一而抹平 Codex 与 OpenCode 的真实生命周期差异。
+- [x] 对不可观测状态在 UI 和文档中展示降级说明。
+- [x] 两个来源都提交标准事件并复用同一套 daemon 多会话仲裁规则。
+
+P7 的软件实现已完成。剩余真实试用必须由用户在桌面界面确认写入个人 Agent 配置后
+进行；自动验证不会越过该确认，也不会直接修改 `~/.codex` 或 `~/.config/opencode`。
 
 ### 10.3 验收门槛
 
@@ -485,15 +502,15 @@ Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Clau
 
 按依赖顺序，项目启动时先创建以下任务：
 
-1. **P0-01：冻结许可证选择**
-   产物：许可证文件和决策记录。
+1. **P0-01（已完成）：冻结许可证选择**
+   产物：PolyForm Noncommercial 1.0.0 许可证文件、版权声明和决策记录。
 2. **P0-02：采集 asusd D-Bus 能力**
    产物：只读枚举探针、脱敏 fixture 和能力文档。
 3. **P0-03：验证安全硬件读写与恢复**
    依赖 P0-02；产物：显式运行的硬件探针和恢复记录。
 4. **P0-04：验证 Node.js 24 + GTK4/libadwaita**
    产物：最小窗口探针和运行环境记录。
-5. **P0-05：核对三个 Agent 的真实 Hook 契约**
+5. **P0-05：核对 Codex 与 OpenCode 的真实 Hook 契约**
    产物：事件矩阵、脱敏 fixtures 和降级说明。
 6. **P0-06：决定发布 runtime 策略**
    依赖 P0-04；产物：runtime/ABI 决策记录。
@@ -511,12 +528,12 @@ Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Clau
 
 项目状态只按验收结果判断，不按“代码完成百分比”判断：
 
-| 状态 | 定义 |
-| --- | --- |
-| 未开始 | 依赖未满足或没有可运行产物 |
-| 进行中 | 已有实现，但阶段验收尚未全部通过 |
-| 已完成 | 自动验证、必要硬件验证和文档均完成 |
-| 阻塞 | 外部接口、硬件或关键依赖无法满足已确认方案 |
+| 状态   | 定义                                       |
+| ------ | ------------------------------------------ |
+| 未开始 | 依赖未满足或没有可运行产物                 |
+| 进行中 | 已有实现，但阶段验收尚未全部通过           |
+| 已完成 | 自动验证、必要硬件验证和文档均完成         |
+| 阻塞   | 外部接口、硬件或关键依赖无法满足已确认方案 |
 
 每个阶段结束时记录：
 
@@ -526,4 +543,4 @@ Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Clau
 - 是否需要修改技术规划；
 - 下一阶段第一个最小任务。
 
-这样可以确保项目从空仓库开始，每一步都有真实可运行成果，并且任何阶段出现技术风险时，都能在投入 Desktop、三套适配器和发布工程之前及时调整。
+这样可以确保项目从空仓库开始，每一步都有真实可运行成果，并且任何阶段出现技术风险时，都能在投入 Desktop、两套适配器和发布工程之前及时调整。

@@ -126,13 +126,70 @@ describe('daemon configuration transactions', () => {
 
 		expect(result).toMatchObject({
 			deviceId: 'configurable:light-1',
-			values: { brightness: 64 },
+			values: { enabled: true, brightness: 64 },
 		});
-		expect(repository.config.devices['configurable:light-1']).toEqual({ brightness: 64 });
+		expect(repository.config.devices['configurable:light-1']).toEqual({
+			enabled: true,
+			brightness: 64,
+		});
 		await daemon.close();
 	});
 
-	it('keeps the old file, device values and visual frame when commit fails', async () => {
+	it('registers every device as enabled and restores it when disabled', async () => {
+		const repository = new MemoryConfigRepository();
+		const backend = new ConfigurableBackend(['configurable:light-1']);
+		const daemon = await startTestDaemon(repository, backend);
+		const registration = await request(daemon.socketPath, 'device.config.get', {
+			deviceId: 'configurable:light-1',
+		});
+
+		expect(registration).toMatchObject({
+			values: { enabled: true, brightness: 10 },
+		});
+		expect(
+			(registration as DeviceConfiguration).settings.find(
+				(setting) => setting.key === 'enabled',
+			),
+		).toMatchObject({ kind: 'boolean', defaultValue: true });
+		await emitWorking(daemon.socketPath);
+		await request(daemon.socketPath, 'device.config.update', {
+			deviceId: 'configurable:light-1',
+			values: { enabled: false },
+		});
+
+		expect(repository.config.devices['configurable:light-1']).toEqual({
+			enabled: false,
+			brightness: 10,
+		});
+		expect(backend.restores).toBeGreaterThan(0);
+		await daemon.close();
+	});
+
+	it('drives and restores a preview without changing Agent leases', async () => {
+		const repository = new MemoryConfigRepository();
+		const backend = new ConfigurableBackend(['configurable:light-1']);
+		const daemon = await startTestDaemon(repository, backend);
+
+		await request(daemon.socketPath, 'preview.start', { state: 'working' });
+		expect(await request(daemon.socketPath, 'preview.getFrame', {})).toMatchObject({
+			active: true,
+			state: 'working',
+			effect: 'breathe',
+		});
+		await request(daemon.socketPath, 'preview.update', { state: 'error' });
+		expect(backend.visualCommits.at(-1)?.semanticState).toBe('error');
+		await request(daemon.socketPath, 'preview.stop', {});
+		expect(await request(daemon.socketPath, 'preview.getFrame', {})).toEqual({
+			active: false,
+		});
+		expect(backend.restores).toBeGreaterThan(0);
+		expect(await request(daemon.socketPath, 'daemon.getStatus', {})).toMatchObject({
+			currentState: 'idle',
+		});
+		await daemon.close();
+	});
+
+	it('keeps the old file, device values and running visual effect when commit fails', async () => {
 		const repository = new MemoryConfigRepository();
 		repository.failCommit = true;
 		repository.commitDelayMs = 150;
@@ -140,7 +197,6 @@ describe('daemon configuration transactions', () => {
 		const daemon = await startTestDaemon(repository, backend);
 		await emitWorking(daemon.socketPath);
 		const oldConfig = structuredClone(repository.config);
-		const oldFrame = backend.visualCommits.at(-1);
 		const candidate = createDefaultConfig();
 		candidate.devices['configurable:light-1'] = { brightness: 80 };
 		candidate.profiles.working = {
@@ -158,10 +214,10 @@ describe('daemon configuration transactions', () => {
 		expect(repository.discards).toBe(1);
 		expect(backend.values('configurable:light-1')).toEqual({ brightness: 10 });
 		expect(backend.visualCommits.at(-1)).toMatchObject({
-			color: oldFrame?.color,
-			hardwareIntensity: oldFrame?.hardwareIntensity,
+			hardwareIntensity: oldConfig.profiles.working.hardwareIntensity,
 			semanticState: 'working',
 		});
+		expect(backend.visualCommits.at(-1)?.color).not.toEqual({ red: 255, green: 0, blue: 0 });
 		expect(backend.deliveredBrightnesses).not.toContain(80);
 		expect(await request(daemon.socketPath, 'config.get', {})).toEqual(oldConfig);
 		await daemon.close();
@@ -225,6 +281,7 @@ class ConfigurableBackend implements LightingBackend {
 	readonly id = 'configurable';
 	readonly deliveredBrightnesses: number[] = [];
 	readonly visualCommits: StaticVisualState[] = [];
+	restores = 0;
 	readonly #devices: readonly DeviceDescriptor[];
 	readonly #values = new Map<string, DeviceConfigurationValues>();
 	failDeviceId: string | undefined;
@@ -287,7 +344,9 @@ class ConfigurableBackend implements LightingBackend {
 		return { requested: visualState, applied: visualState, degraded: false };
 	}
 
-	async restoreSnapshot(): Promise<void> {}
+	async restoreSnapshot(): Promise<void> {
+		this.restores += 1;
+	}
 
 	async close(): Promise<void> {}
 

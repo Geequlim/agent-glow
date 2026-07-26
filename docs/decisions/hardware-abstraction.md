@@ -86,17 +86,17 @@ future-rgb:<stable-device-key>
 
 ```yaml
 profiles:
-  working:
-    color: "#5865F2"
-    effect: breathe
+    working:
+        color: '#5865F2'
+        effect: breathe
 
 backends:
-  asusd:
-    enabled: true
-    aura:
-      hardwareBrightness: 2
-    slash:
-      brightness: 128
+    asusd:
+        enabled: true
+        aura:
+            hardwareBrightness: 2
+        slash:
+            brightness: 128
 ```
 
 设备实现可以向 daemon 注册自身支持的配置项。注册协议使用 TypeBox 定义

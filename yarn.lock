@@ -82,10 +82,13 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@agent-glow/desktop@workspace:apps/desktop"
   dependencies:
+    "@agent-glow/config": "workspace:^"
+    "@agent-glow/protocol": "workspace:^"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
     "@types/node": "npm:24.13.3"
     commander: "npm:15.0.0"
+    mobx: "npm:6.16.1"
     node-gtk: "npm:4.1.1"
     ts-checker-rspack-plugin: "npm:1.5.2"
     typescript: "npm:7.0.2"
@@ -3348,6 +3351,13 @@ __metadata:
   bin:
     mkcert: dist/cli.js
   checksum: 10c0/331a5be54aa16f1cff9ab2cbb626a7ba27a06432d2f65a20a6b9275b2188d2807fd4082535a19ce5a1c368bc603ce1a700cab0ae2db3d8f301f3983167b16eb1
+  languageName: node
+  linkType: hard
+
+"mobx@npm:6.16.1":
+  version: 6.16.1
+  resolution: "mobx@npm:6.16.1"
+  checksum: 10c0/8450dab51fa133c9dde9f6c9b42cdc9f16c70cf2b989acc25b2cf2c66948def053ad3f1fdfc3bc256ece394e607e9c15dbfe88792ffa81a041e2ec92ae268cdb
   languageName: node
   linkType: hard
 

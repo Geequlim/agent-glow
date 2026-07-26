@@ -39,10 +39,33 @@ describe('VisualStateEngine', () => {
 
 	it('reports a completed one-shot pulse as no longer animating', () => {
 		const clock = new FakeClock();
-		const engine = new VisualStateEngine(getSemanticVisualEffect('success'), clock, 300);
-		clock.nowValue = 901;
+		const success = getSemanticVisualEffect('success');
+		if (success.effect !== 'pulse') throw new Error('Success fixture must pulse');
+		const engine = new VisualStateEngine(success, clock, 300);
+		clock.nowValue = success.durationMs + 1;
 
 		expect(engine.isAnimating()).toBe(false);
+	});
+
+	it('keeps a long tool stream active and restores working after a short call', () => {
+		const clock = new FakeClock();
+		const working = getSemanticVisualEffect('working');
+		const toolUse = getSemanticVisualEffect('tool_use');
+		const engine = new VisualStateEngine(working, clock, 120);
+
+		engine.setTarget(toolUse);
+		clock.nowValue = 200;
+		const shortCallFrame = engine.frame();
+		expect(shortCallFrame.semanticState).toBe('tool_use');
+		expect(shortCallFrame.color).not.toEqual(renderVisualFrame(working, 200).color);
+
+		clock.nowValue = 15_000;
+		expect(engine.isAnimating()).toBe(true);
+		expect(engine.frame().semanticState).toBe('tool_use');
+
+		engine.setTarget(working);
+		clock.nowValue += 120;
+		expect(engine.frame().semanticState).toBe('working');
 	});
 
 	it('reconfigures from the visible frame without restarting the effect timeline', () => {
@@ -54,7 +77,8 @@ describe('VisualStateEngine', () => {
 		const before = engine.frame();
 		const updated = {
 			...original,
-			color: { red: 255, green: 0, blue: 0 },
+			startColor: { red: 255, green: 0, blue: 0 },
+			endColor: { red: 255, green: 0, blue: 0 },
 		};
 
 		engine.reconfigure(updated, 300);
@@ -67,7 +91,7 @@ describe('VisualStateEngine', () => {
 		expect(after.color.green).toBeCloseTo(before.color.green);
 		expect(after.color.blue).toBeCloseTo(before.color.blue);
 		expect(after.intensity).toBe(before.intensity);
-		expect(completed.color.red).toBe(255);
+		expect(completed.color.red).toBeCloseTo(255);
 		expect(completed.intensity).toBeCloseTo(expected.intensity);
 	});
 });

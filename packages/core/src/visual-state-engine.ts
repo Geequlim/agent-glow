@@ -73,7 +73,7 @@ export class VisualStateEngine {
 
 	isAnimating(now = this.#clock.now()): boolean {
 		if (this.#transition) return true;
-		if (this.#effect.effect === 'breathe') return true;
+		if (this.#effect.effect === 'breathe' || this.#effect.effect === 'stream') return true;
 		return (
 			this.#effect.effect === 'pulse' && now - this.#effectStartedAt < this.#effect.durationMs
 		);
