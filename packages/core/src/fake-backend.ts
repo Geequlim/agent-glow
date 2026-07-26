@@ -1,4 +1,8 @@
 import type { DeviceDescriptor } from '@agent-glow/protocol/device';
+import type {
+	DeviceConfiguration,
+	DeviceConfigurationValues,
+} from '@agent-glow/protocol/device-configuration';
 
 import type {
 	BackendApplyResult,
@@ -38,6 +42,21 @@ export class FakeLightingBackend implements LightingBackend {
 	async discoverDevices(): Promise<readonly DeviceDescriptor[]> {
 		this.#assertOpen();
 		return this.#devices;
+	}
+
+	async getDeviceConfiguration(deviceId: string): Promise<DeviceConfiguration> {
+		this.#assertDevice(deviceId);
+		return { deviceId, settings: [], values: {} };
+	}
+
+	async updateDeviceConfiguration(
+		deviceId: string,
+		values: DeviceConfigurationValues,
+	): Promise<void> {
+		this.#assertDevice(deviceId);
+		if (Object.keys(values).length > 0) {
+			throw new Error('Fake device does not register configuration settings');
+		}
 	}
 
 	async captureSnapshot(deviceId: string): Promise<BackendSnapshot> {

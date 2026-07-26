@@ -1,18 +1,20 @@
 {
 	"name": "@agent-glow/core",
-	"version": "0.0.0",
+	"version": "0.1.0-dev",
 	"private": true,
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
 		"./backend": "./src/backend.ts",
+		"./device-configuration": "./src/device-configuration.ts",
 		"./fake-backend": "./src/fake-backend.ts",
 		"./lease-arbiter": "./src/lease-arbiter.ts",
 		"./semantic-visual-state": "./src/semantic-visual-state.ts",
 		"./state-priority": "./src/state-priority.ts"
 	},
 	"dependencies": {
-		"@agent-glow/protocol": "workspace:^"
+		"@agent-glow/protocol": "workspace:^",
+		"@sinclair/typebox": "0.34.52"
 	},
 	"devDependencies": {
 		"@types/node": "24.13.3",

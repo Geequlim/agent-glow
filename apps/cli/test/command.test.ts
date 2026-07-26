@@ -65,6 +65,27 @@ describe('runCli', () => {
 		).toBe(0);
 		expect(output.stdout).toEqual(['working\n']);
 	});
+
+	it('updates a typed device configuration value', async () => {
+		const output = createOutput();
+
+		expect(
+			await runCli(
+				['device-config-set', 'future-rgb:light-1', 'states.working.brightness', '200'],
+				'1.2.3',
+				output,
+				async (method, params) => {
+					expect(method).toBe('device.config.update');
+					expect(params).toEqual({
+						deviceId: 'future-rgb:light-1',
+						values: { 'states.working.brightness': 200 },
+					});
+					return { deviceId: 'future-rgb:light-1', settings: [], values: {} };
+				},
+			),
+		).toBe(0);
+		expect(output.stderr).toEqual([]);
+	});
 });
 
 async function unusedRequest(): Promise<never> {

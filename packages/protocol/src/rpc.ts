@@ -1,6 +1,10 @@
 import { Type, type Static } from '@sinclair/typebox';
 
 import { DeviceDescriptorSchema } from './device.js';
+import {
+	DeviceConfigurationSchema,
+	DeviceConfigurationValuesSchema,
+} from './device-configuration.js';
 import { AgentGlowEventSchema } from './event.js';
 import { PROTOCOL_LIMITS, PROTOCOL_VERSION } from './limits.js';
 import { SemanticStateSchema } from './semantic-state.js';
@@ -32,6 +36,17 @@ export const EventClearParamsSchema = Type.Object(
 	},
 	strict,
 );
+export const DeviceConfigurationGetParamsSchema = Type.Object(
+	{ deviceId: DeviceDescriptorSchema.properties.id },
+	strict,
+);
+export const DeviceConfigurationUpdateParamsSchema = Type.Object(
+	{
+		deviceId: DeviceDescriptorSchema.properties.id,
+		values: DeviceConfigurationValuesSchema,
+	},
+	strict,
+);
 
 export const RpcRequestSchema = Type.Union([
 	Type.Object(
@@ -57,6 +72,33 @@ export const RpcRequestSchema = Type.Union([
 			jsonrpc: Type.Literal('2.0'),
 			id: JsonRpcIdSchema,
 			method: Type.Literal('device.list'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('device.config.get'),
+			params: DeviceConfigurationGetParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('device.config.update'),
+			params: DeviceConfigurationUpdateParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('diagnostics.get'),
 			params: EmptyParamsSchema,
 		},
 		strict,
@@ -103,6 +145,7 @@ export const DeviceListResultSchema = Type.Object(
 	{ devices: Type.Array(DeviceDescriptorSchema, { maxItems: 64 }) },
 	strict,
 );
+export const DeviceConfigurationResultSchema = DeviceConfigurationSchema;
 export const EventEmitResultSchema = Type.Object(
 	{
 		accepted: Type.Literal(true),

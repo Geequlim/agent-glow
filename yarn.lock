@@ -38,6 +38,7 @@ __metadata:
   resolution: "@agent-glow/core@workspace:packages/core"
   dependencies:
     "@agent-glow/protocol": "workspace:^"
+    "@sinclair/typebox": "npm:0.34.52"
     "@types/node": "npm:24.13.3"
     typescript: "npm:7.0.2"
     vitest: "npm:4.1.10"

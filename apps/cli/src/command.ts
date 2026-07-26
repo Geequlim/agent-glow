@@ -37,6 +37,44 @@ export async function runCli(
 		});
 
 	program
+		.command('device-config')
+		.description('Show configuration registered by a device')
+		.argument('<device-id>')
+		.action(async (deviceId: string) => {
+			output.writeOutput(
+				`${JSON.stringify(await request('device.config.get', { deviceId }), null, 2)}\n`,
+			);
+		});
+
+	program
+		.command('device-config-set')
+		.description('Update one runtime device configuration value')
+		.argument('<device-id>')
+		.argument('<key>')
+		.argument('<value>')
+		.action(async (deviceId: string, key: string, value: string) => {
+			output.writeOutput(
+				`${JSON.stringify(
+					await request('device.config.update', {
+						deviceId,
+						values: { [key]: parseConfigurationValue(value) },
+					}),
+					null,
+					2,
+				)}\n`,
+			);
+		});
+
+	program
+		.command('diagnostics')
+		.description('Show backend and device apply diagnostics')
+		.action(async () => {
+			output.writeOutput(
+				`${JSON.stringify(await request('diagnostics.get', {}), null, 2)}\n`,
+			);
+		});
+
+	program
 		.command('event')
 		.description('Submit a semantic state event')
 		.requiredOption('--source <source>')
@@ -131,4 +169,11 @@ function writeState(output: CliOutput, result: unknown): void {
 		throw new Error('Daemon response does not contain currentState');
 	}
 	output.writeOutput(`${result.currentState}\n`);
+}
+
+function parseConfigurationValue(value: string): string | number | boolean {
+	if (value === 'true') return true;
+	if (value === 'false') return false;
+	if (/^-?\d+$/u.test(value)) return Number(value);
+	return value;
 }

@@ -139,7 +139,7 @@ describe('AsusdLightingBackend', () => {
 
 		expect(transport.slash).toEqual({
 			Enabled: { signature: 'b', value: true },
-			Brightness: { signature: 'y', value: 128 },
+			Brightness: { signature: 'y', value: 255 },
 			Interval: { signature: 'y', value: 1 },
 			Mode: { signature: 'u', value: 0x44 },
 		});
@@ -150,6 +150,71 @@ describe('AsusdLightingBackend', () => {
 		expect(transport.slash).toEqual({
 			...initialSlashProperties,
 			Mode: { signature: 'u', value: 0x32 },
+		});
+	});
+
+	it('registers Slash settings and applies runtime configuration updates', async () => {
+		const transport = new FixtureTransport();
+		const backend = new AsusdLightingBackend(transport);
+		const device = (await backend.discoverDevices()).find((item) =>
+			item.id.startsWith('asusd:slash-'),
+		);
+		if (!device) throw new Error('Slash fixture device missing');
+
+		const configuration = await backend.getDeviceConfiguration(device.id);
+
+		expect(configuration.settings).toHaveLength(18);
+		expect(
+			configuration.settings.find((setting) => setting.key === 'states.working.effect'),
+		).toMatchObject({
+			kind: 'select',
+			defaultValue: 'loading',
+			options: expect.arrayContaining([{ value: 'spectrum', label: 'Spectrum' }]),
+		});
+
+		await backend.updateDeviceConfiguration(device.id, {
+			'states.working.effect': 'spectrum',
+			'states.working.brightness': 100,
+			'states.working.interval': 4,
+		});
+		await backend.applyVisualState(device.id, {
+			color: { red: 88, green: 101, blue: 242 },
+			hardwareIntensity: 0.7,
+			intensity: 1,
+			semanticState: 'working',
+		});
+
+		expect(transport.slash).toMatchObject({
+			Enabled: { value: true },
+			Brightness: { value: 100 },
+			Interval: { value: 4 },
+			Mode: { value: 0x26 },
+		});
+		const result = await backend.applyVisualState(device.id, {
+			color: { red: 88, green: 101, blue: 242 },
+			hardwareIntensity: 0.7,
+			intensity: 0.5,
+			semanticState: 'working',
+		});
+		expect(result.details).toEqual({
+			requested: {
+				firmwareEffect: 'Spectrum',
+				brightness: 100,
+				color: 'rgb(88,101,242)',
+				interval: 4,
+				power: true,
+			},
+			applied: {
+				firmwareEffect: 'Spectrum',
+				brightness: 100,
+				color: 'unsupported',
+				interval: 4,
+				power: true,
+			},
+		});
+		expect(result).toMatchObject({
+			degraded: true,
+			reason: expect.stringContaining('Static color unavailable'),
 		});
 	});
 
@@ -171,6 +236,17 @@ describe('AsusdLightingBackend', () => {
 		});
 
 		expect(result).toMatchObject({
+			degraded: true,
+			reason: expect.stringContaining('incorrect type'),
+		});
+		expect(
+			await backend.applyVisualState(device.id, {
+				color: { red: 88, green: 101, blue: 242 },
+				hardwareIntensity: 0.7,
+				intensity: 0.5,
+				semanticState: 'working',
+			}),
+		).toMatchObject({
 			degraded: true,
 			reason: expect.stringContaining('incorrect type'),
 		});

@@ -3,6 +3,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import path from 'node:path';
 
 import type { BackendSnapshot, LightingBackend } from '@agent-glow/core/backend';
+import { mergeDeviceConfiguration } from '@agent-glow/core/device-configuration';
 import { LeaseArbiter } from '@agent-glow/core/lease-arbiter';
 import {
 	getSemanticVisualEffect,
@@ -42,6 +43,17 @@ export async function startDaemonServer(
 	let animationTimer: NodeJS.Timeout | undefined;
 	let frameWrite: Promise<void> | undefined;
 	let snapshots: readonly BackendSnapshot[];
+	const deviceDiagnostics = new Map<
+		string,
+		{
+			readonly applied?: unknown;
+			readonly details?: unknown;
+			readonly reason?: string;
+			readonly requested?: unknown;
+			readonly status: 'ok' | 'degraded' | 'error';
+		}
+	>();
+	const lastDegradationReasons = new Map<string, string>();
 
 	try {
 		const devices = await backend.discoverDevices();
@@ -115,6 +127,25 @@ export async function startDaemonServer(
 				return { lifecycle: 'running', currentState: arbiter.currentState() };
 			case 'device.list':
 				return { devices: await backend.discoverDevices() };
+			case 'device.config.get':
+				return backend.getDeviceConfiguration(request.params.deviceId);
+			case 'device.config.update': {
+				const current = await backend.getDeviceConfiguration(request.params.deviceId);
+				const updated = mergeDeviceConfiguration(current, request.params.values);
+				await backend.updateDeviceConfiguration(request.params.deviceId, updated.values);
+				await displayState(arbiter.currentState());
+				return updated;
+			}
+			case 'diagnostics.get': {
+				const devices = await backend.discoverDevices();
+				return {
+					backend: { id: backend.id, health: backend.getHealth() },
+					devices: devices.map((device) => ({
+						deviceId: device.id,
+						...(deviceDiagnostics.get(device.id) ?? { status: 'unknown' }),
+					})),
+				};
+			}
 			case 'event.emit': {
 				const currentState = arbiter.apply(request.params.event);
 				await displayState(currentState);
@@ -174,16 +205,29 @@ export async function startDaemonServer(
 			try {
 				const result = await backend.applyVisualState(device.id, visualState);
 				appliedDevices += 1;
+				deviceDiagnostics.set(device.id, {
+					status: result.degraded ? 'degraded' : 'ok',
+					requested: result.requested,
+					applied: result.applied,
+					...(result.details ? { details: result.details } : {}),
+					...(result.reason ? { reason: result.reason } : {}),
+				});
 				if (result.degraded) {
-					console.warn(
-						`[agent-glow] device degraded device=${device.id} reason=${result.reason ?? 'unspecified'}`,
-					);
+					const reason = result.reason ?? 'unspecified';
+					if (lastDegradationReasons.get(device.id) !== reason) {
+						console.warn(
+							`[agent-glow] device degraded device=${device.id} reason=${reason}`,
+						);
+						lastDegradationReasons.set(device.id, reason);
+					}
+				} else {
+					lastDegradationReasons.delete(device.id);
 				}
 			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				deviceDiagnostics.set(device.id, { status: 'error', reason });
 				console.error(
-					`[agent-glow] device apply failed device=${device.id} error=${
-						error instanceof Error ? error.message : String(error)
-					}`,
+					`[agent-glow] device apply failed device=${device.id} error=${reason}`,
 				);
 			}
 		}
@@ -207,15 +251,7 @@ export async function startDaemonServer(
 			if (frameWrite) await captureError(() => frameWrite as Promise<void>, errors);
 			for (const socket of sockets) socket.destroy();
 			await captureError(() => closeServer(server), errors);
-			const errorsBeforeRestore = errors.length;
-			for (const snapshot of snapshots) {
-				await captureError(() => backend.restoreSnapshot(snapshot), errors);
-			}
-			if (errors.length === errorsBeforeRestore) {
-				console.log(
-					`[agent-glow] restored snapshots backend=${backend.id} devices=${snapshots.length}`,
-				);
-			}
+			await captureError(() => restoreBackendSnapshots(backend, snapshots), errors);
 			await captureError(() => backend.close(), errors);
 			await captureError(
 				() =>
@@ -227,6 +263,49 @@ export async function startDaemonServer(
 			if (errors.length > 0) throw new AggregateError(errors, 'Daemon shutdown failed');
 		},
 	};
+}
+
+export async function restoreBackendSnapshots(
+	backend: LightingBackend,
+	snapshots: readonly BackendSnapshot[],
+): Promise<void> {
+	const errors: unknown[] = [];
+	let restoredSnapshots = 0;
+	for (const snapshot of snapshots) {
+		try {
+			await backend.restoreSnapshot(snapshot);
+			restoredSnapshots += 1;
+		} catch (error) {
+			errors.push(error);
+			console.error(
+				`[agent-glow] snapshot restore failed device=${snapshot.deviceId} error=${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			try {
+				const safeState = renderVisualFrame(getSemanticVisualEffect('idle'), 0);
+				await backend.applyVisualState(snapshot.deviceId, safeState);
+				console.warn(
+					`[agent-glow] applied safe fallback device=${snapshot.deviceId} state=idle`,
+				);
+			} catch (fallbackError) {
+				errors.push(fallbackError);
+				console.error(
+					`[agent-glow] safe fallback failed device=${snapshot.deviceId} error=${
+						fallbackError instanceof Error
+							? fallbackError.message
+							: String(fallbackError)
+					}`,
+				);
+			}
+		}
+	}
+	if (restoredSnapshots === snapshots.length) {
+		console.log(
+			`[agent-glow] restored snapshots backend=${backend.id} devices=${snapshots.length}`,
+		);
+	}
+	if (errors.length > 0) throw new AggregateError(errors, 'Backend snapshot restoration failed');
 }
 
 async function prepareSocketPath(socketPath: string): Promise<void> {

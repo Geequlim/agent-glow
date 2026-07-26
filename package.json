@@ -1,23 +1,14 @@
 {
 	"name": "agent-glow",
-	"version": "0.0.0",
-	"description": "面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成",
-	"author": "Geequlim",
-	"license": "UNLICENSED",
+	"version": "0.1.0-dev",
 	"private": true,
-	"packageManager": "yarn@4.17.1",
-	"engines": {
-		"node": ">=24"
-	},
+	"description": "面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成",
+	"license": "UNLICENSED",
+	"author": "Geequlim",
 	"workspaces": [
 		"apps/*",
 		"packages/*"
 	],
-	"dependenciesMeta": {
-		"node-gtk@4.1.1": {
-			"built": true
-		}
-	},
 	"devDependencies": {
 		"@homebridge/dbus-native": "0.7.7",
 		"@tinyaxis/toolkit": "0.3.0",
@@ -27,5 +18,14 @@
 		"oxlint": "1.70.0",
 		"oxlint-tsgolint": "0.23.0",
 		"typescript": "7.0.2"
-	}
+	},
+	"dependenciesMeta": {
+		"node-gtk@4.1.1": {
+			"built": true
+		}
+	},
+	"engines": {
+		"node": ">=24"
+	},
+	"packageManager": "yarn@4.17.1"
 }

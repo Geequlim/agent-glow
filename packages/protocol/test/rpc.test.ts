@@ -17,6 +17,22 @@ describe('RpcRequestSchema', () => {
 			{
 				jsonrpc: '2.0',
 				id: 4,
+				method: 'device.config.get',
+				params: { deviceId: 'fake:light-1' },
+			},
+			{
+				jsonrpc: '2.0',
+				id: 5,
+				method: 'device.config.update',
+				params: {
+					deviceId: 'fake:light-1',
+					values: { 'states.working.brightness': 128 },
+				},
+			},
+			{ jsonrpc: '2.0', id: 6, method: 'diagnostics.get', params: {} },
+			{
+				jsonrpc: '2.0',
+				id: 7,
 				method: 'event.emit',
 				params: {
 					event: {
@@ -30,7 +46,7 @@ describe('RpcRequestSchema', () => {
 			},
 			{
 				jsonrpc: '2.0',
-				id: 5,
+				id: 8,
 				method: 'event.clear',
 				params: { source: 'codex', sessionId: 'session-1' },
 			},
@@ -44,7 +60,7 @@ describe('RpcRequestSchema', () => {
 			Value.Check(RpcRequestSchema, {
 				jsonrpc: '2.0',
 				id: 1,
-				method: 'diagnostics.get',
+				method: 'device.config.remove',
 				params: {},
 			}),
 		).toBe(false);

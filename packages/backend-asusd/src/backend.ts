@@ -6,7 +6,13 @@ import type {
 	LightingBackend,
 	StaticVisualState,
 } from '@agent-glow/core/backend';
+import { mergeDeviceConfiguration } from '@agent-glow/core/device-configuration';
 import type { DeviceDescriptor } from '@agent-glow/protocol/device';
+import type {
+	DeviceConfiguration,
+	DeviceConfigurationSetting,
+	DeviceConfigurationValues,
+} from '@agent-glow/protocol/device-configuration';
 
 import { DbusAsusdTransport } from './dbus-transport.js';
 import type { AsusdTransport, DbusProperty, ManagedObject } from './transport.js';
@@ -43,28 +49,54 @@ interface SlashSnapshotValue {
 }
 
 interface SlashEffect {
-	readonly brightness: number;
-	readonly interval: number;
 	readonly mode: number;
 	readonly name: string;
 }
 
 const slashEffects = {
-	idle: { name: 'Phantom', mode: 0x24, brightness: 51, interval: 5 },
-	paused: { name: 'Bounce', mode: 0x10, brightness: 77, interval: 3 },
-	working: { name: 'Loading', mode: 0x13, brightness: 179, interval: 0 },
-	waiting_permission: { name: 'Buzzer', mode: 0x44, brightness: 255, interval: 1 },
-	success: { name: 'Slash', mode: 0x12, brightness: 230, interval: 2 },
-	error: { name: 'Hazard', mode: 0x32, brightness: 255, interval: 0 },
-} as const satisfies Readonly<Record<StaticVisualState['semanticState'], SlashEffect>>;
+	static: { name: 'Static', mode: 0x06 },
+	bounce: { name: 'Bounce', mode: 0x10 },
+	slash: { name: 'Slash', mode: 0x12 },
+	loading: { name: 'Loading', mode: 0x13 },
+	bit_stream: { name: 'BitStream', mode: 0x1d },
+	transmission: { name: 'Transmission', mode: 0x1a },
+	flow: { name: 'Flow', mode: 0x19 },
+	flux: { name: 'Flux', mode: 0x25 },
+	phantom: { name: 'Phantom', mode: 0x24 },
+	spectrum: { name: 'Spectrum', mode: 0x26 },
+	hazard: { name: 'Hazard', mode: 0x32 },
+	interfacing: { name: 'Interfacing', mode: 0x33 },
+	ramp: { name: 'Ramp', mode: 0x34 },
+	game_over: { name: 'GameOver', mode: 0x42 },
+	start: { name: 'Start', mode: 0x43 },
+	buzzer: { name: 'Buzzer', mode: 0x44 },
+} as const satisfies Readonly<Record<string, SlashEffect>>;
+
+type SlashEffectId = keyof typeof slashEffects;
+
+const slashDefaults = {
+	idle: { effect: 'phantom', brightness: 51, interval: 5 },
+	paused: { effect: 'bounce', brightness: 77, interval: 3 },
+	working: { effect: 'loading', brightness: 179, interval: 0 },
+	waiting_permission: { effect: 'buzzer', brightness: 255, interval: 1 },
+	success: { effect: 'slash', brightness: 230, interval: 2 },
+	error: { effect: 'hazard', brightness: 255, interval: 0 },
+} as const satisfies Readonly<
+	Record<
+		StaticVisualState['semanticState'],
+		{ readonly effect: SlashEffectId; readonly brightness: number; readonly interval: number }
+	>
+>;
 
 export class AsusdLightingBackend implements LightingBackend {
 	readonly id = 'asusd';
 
 	readonly #transport: AsusdTransport;
 	readonly #deviceKind: AsusdDeviceKind | undefined;
+	readonly #lastSlashResult = new Map<string, BackendApplyResult>();
 	readonly #lastSlashState = new Map<string, string>();
 	readonly #slashModeWritable = new Map<string, boolean>();
+	readonly #slashConfiguration = new Map<string, DeviceConfigurationValues>();
 	#devices: readonly AsusdDevice[] | undefined;
 	#closed = false;
 
@@ -82,6 +114,30 @@ export class AsusdLightingBackend implements LightingBackend {
 
 	async discoverDevices(): Promise<readonly DeviceDescriptor[]> {
 		return (await this.#discoverDevices()).map((device) => device.descriptor);
+	}
+
+	async getDeviceConfiguration(deviceId: string): Promise<DeviceConfiguration> {
+		const device = await this.#findDevice(deviceId);
+		if (device.kind === 'aura') return { deviceId, settings: [], values: {} };
+		return {
+			deviceId,
+			settings: slashConfigurationSettings,
+			values: { ...this.#getSlashConfiguration(deviceId) },
+		};
+	}
+
+	async updateDeviceConfiguration(
+		deviceId: string,
+		values: DeviceConfigurationValues,
+	): Promise<void> {
+		const current = await this.getDeviceConfiguration(deviceId);
+		if (current.settings.length === 0 && Object.keys(values).length > 0) {
+			throw new Error('Device does not register configuration settings');
+		}
+		const updated = mergeDeviceConfiguration(current, values);
+		this.#slashConfiguration.set(deviceId, updated.values);
+		this.#lastSlashState.delete(deviceId);
+		this.#lastSlashResult.delete(deviceId);
 	}
 
 	async captureSnapshot(deviceId: string): Promise<BackendSnapshot> {
@@ -179,6 +235,7 @@ export class AsusdLightingBackend implements LightingBackend {
 				);
 			}
 			this.#lastSlashState.delete(device.descriptor.id);
+			this.#lastSlashResult.delete(device.descriptor.id);
 			this.#slashModeWritable.delete(device.descriptor.id);
 			return;
 		}
@@ -230,13 +287,15 @@ export class AsusdLightingBackend implements LightingBackend {
 		device: SlashDevice,
 		visualState: StaticVisualState,
 	): Promise<BackendApplyResult> {
-		const effect = slashEffects[visualState.semanticState];
-		const brightness = Math.round(
-			Math.max(0, Math.min(1, visualState.hardwareIntensity)) * 255,
-		);
-		const stateKey = `${effect.mode}:${effect.interval}:${brightness}`;
+		const prefix = `states.${visualState.semanticState}`;
+		const configuration = this.#getSlashConfiguration(device.descriptor.id);
+		const effect = slashEffects[configuration[`${prefix}.effect`] as SlashEffectId];
+		const brightness = configuration[`${prefix}.brightness`] as number;
+		const interval = configuration[`${prefix}.interval`] as number;
+		const stateKey = `${effect.mode}:${interval}:${brightness}`;
 		if (this.#lastSlashState.get(device.descriptor.id) === stateKey) {
-			return { requested: visualState, applied: visualState, degraded: false };
+			const previous = this.#lastSlashResult.get(device.descriptor.id);
+			if (previous) return { ...previous, requested: visualState, applied: visualState };
 		}
 
 		let modeError: unknown;
@@ -252,7 +311,7 @@ export class AsusdLightingBackend implements LightingBackend {
 		}
 		await this.#transport.setProperty(device.path, SLASH_INTERFACE, 'Interval', {
 			signature: 'y',
-			value: effect.interval,
+			value: interval,
 		});
 		await this.#transport.setProperty(device.path, SLASH_INTERFACE, 'Brightness', {
 			signature: 'y',
@@ -264,26 +323,97 @@ export class AsusdLightingBackend implements LightingBackend {
 		});
 		this.#lastSlashState.set(device.descriptor.id, stateKey);
 		console.log(
-			`[agent-glow] slash state=${visualState.semanticState} mode=${effect.name} brightness=${brightness}/255 interval=${effect.interval}${modeError ? ' degraded=mode-unavailable' : ''}`,
+			`[agent-glow] slash state=${visualState.semanticState} mode=${effect.name} brightness=${brightness}/255 interval=${interval}${modeError ? ' degraded=mode-unavailable' : ''}`,
 		);
-		return {
+		const colorReason = 'Static color unavailable; applied configured firmware effect';
+		const reason = modeError
+			? `${colorReason}; firmware mode unavailable: ${
+					modeError instanceof Error ? modeError.message : String(modeError)
+				}`
+			: colorReason;
+		const result: BackendApplyResult = {
 			requested: visualState,
 			applied: visualState,
-			degraded: modeError !== undefined,
-			...(modeError
-				? {
-						reason: `Slash mode unavailable: ${
-							modeError instanceof Error ? modeError.message : String(modeError)
-						}`,
-					}
-				: {}),
+			degraded: true,
+			details: {
+				requested: {
+					firmwareEffect: effect.name,
+					brightness,
+					color: formatColor(visualState.color),
+					interval,
+					power: true,
+				},
+				applied: {
+					...(modeError ? {} : { firmwareEffect: effect.name }),
+					brightness,
+					color: 'unsupported',
+					interval,
+					power: true,
+				},
+			},
+			reason,
 		};
+		this.#lastSlashResult.set(device.descriptor.id, result);
+		return result;
+	}
+
+	#getSlashConfiguration(deviceId: string): DeviceConfigurationValues {
+		const existing = this.#slashConfiguration.get(deviceId);
+		if (existing) return existing;
+		const defaults = Object.fromEntries(
+			Object.entries(slashDefaults).flatMap(([state, value]) => [
+				[`states.${state}.effect`, value.effect],
+				[`states.${state}.brightness`, value.brightness],
+				[`states.${state}.interval`, value.interval],
+			]),
+		);
+		this.#slashConfiguration.set(deviceId, defaults);
+		return defaults;
 	}
 
 	#assertOpen(): void {
 		if (this.#closed) throw new Error('asusd backend is closed');
 	}
 }
+
+const slashConfigurationSettings: DeviceConfigurationSetting[] = Object.entries(
+	slashDefaults,
+).flatMap(([state, defaults]) => {
+	const group = state.replaceAll('_', ' ');
+	return [
+		{
+			key: `states.${state}.effect`,
+			label: 'Animation',
+			group,
+			kind: 'select',
+			defaultValue: defaults.effect,
+			options: Object.entries(slashEffects).map(([value, effect]) => ({
+				value,
+				label: effect.name,
+			})),
+		},
+		{
+			key: `states.${state}.brightness`,
+			label: 'Brightness',
+			group,
+			kind: 'integer',
+			defaultValue: defaults.brightness,
+			minimum: 0,
+			maximum: 255,
+			step: 1,
+		},
+		{
+			key: `states.${state}.interval`,
+			label: 'Animation interval',
+			group,
+			kind: 'integer',
+			defaultValue: defaults.interval,
+			minimum: 0,
+			maximum: 5,
+			step: 1,
+		},
+	] satisfies DeviceConfigurationSetting[];
+});
 
 function toAuraDevice(object: ManagedObject): AuraDevice | undefined {
 	const aura = object.interfaces.find((item) => item.name === AURA_INTERFACE);
@@ -410,4 +540,8 @@ function readSlashSnapshot(value: unknown): SlashSnapshotValue {
 
 function scaleChannel(channel: number, intensity: number): number {
 	return Math.round(Math.max(0, Math.min(255, channel)) * Math.max(0, Math.min(1, intensity)));
+}
+
+function formatColor(color: StaticVisualState['color']): string {
+	return `rgb(${color.red},${color.green},${color.blue})`;
 }

@@ -1,11 +1,12 @@
 {
 	"name": "@agent-glow/protocol",
-	"version": "0.0.0",
+	"version": "0.1.0-dev",
 	"private": true,
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
 		"./device": "./src/device.ts",
+		"./device-configuration": "./src/device-configuration.ts",
 		"./event": "./src/event.ts",
 		"./limits": "./src/limits.ts",
 		"./rpc": "./src/rpc.ts",

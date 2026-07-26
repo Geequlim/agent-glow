@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const CLI_BUNDLE = path.resolve('apps/cli/dist/index.cjs');
 const DAEMON_BUNDLE = path.resolve('apps/daemon/dist/index.cjs');
-const EXPECTED_VERSION = '0.0.0';
+const EXPECTED_VERSION = '0.1.0-dev';
 const TIMEOUT_MILLISECONDS = 5000;
 
 await assertVersion(CLI_BUNDLE);
@@ -71,6 +71,27 @@ async function assertMvpClosure(): Promise<void> {
 		const devices = await runProcess(CLI_BUNDLE, ['devices'], environment);
 		if (devices.code !== 0 || !devices.stdout.includes('fake:light-1')) {
 			throw new Error(`Device smoke failed: ${JSON.stringify(devices)}`);
+		}
+
+		const configuration = await runProcess(
+			CLI_BUNDLE,
+			['device-config', 'fake:light-1'],
+			environment,
+		);
+		if (
+			configuration.code !== 0 ||
+			!configuration.stdout.includes('"deviceId": "fake:light-1"')
+		) {
+			throw new Error(`Device configuration smoke failed: ${JSON.stringify(configuration)}`);
+		}
+
+		const diagnostics = await runProcess(CLI_BUNDLE, ['diagnostics'], environment);
+		if (
+			diagnostics.code !== 0 ||
+			!diagnostics.stdout.includes('"status": "ok"') ||
+			!diagnostics.stdout.includes('"id": "fake"')
+		) {
+			throw new Error(`Diagnostics smoke failed: ${JSON.stringify(diagnostics)}`);
 		}
 
 		await assertCli(

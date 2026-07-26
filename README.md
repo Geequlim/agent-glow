@@ -90,11 +90,12 @@ AGENT_GLOW_BACKEND=asusd \
 node apps/daemon/dist/index.cjs
 ```
 
-启动时 daemon 会保存 Aura 的完整 `LedModeData`，随后现有 `status`、`devices`、
+启动时 daemon 会保存 Aura 与 Slash 的完整状态，随后 `status`、`devices`、
 `event` 和 `clear` 命令无需硬件专用参数即可使用。正常收到 `SIGINT` 或 `SIGTERM`
-时，daemon 会恢复启动前的完整 Aura 状态。
+时，daemon 会恢复启动前的硬件状态。
 
-当前实机实现只支持 Aura 单区静态色。尚未接入 Slash，也不使用未经验证的固件模式。
+当前 Aura 实现支持单区颜色和软件呼吸，Slash 实现支持开关、原生亮度、动画间隔
+以及已验证的 16 种固件动画。
 
 依次展示当前六种语义状态的实机冒烟测试：
 
@@ -108,6 +109,28 @@ yarn tiny smoke/hardware/aura
 `waiting_permission` 使用约 0.9 秒的软件呼吸周期。呼吸亮度通过缩放 RGB 输出，
 不依赖设备提供细粒度硬件亮度。测试结束后恢复启动前的完整 Aura 状态。这个明确命名的硬件
 任务会自动设置写入解锁变量；直接运行底层脚本仍然需要环境变量和确认参数双重解锁。
+
+## 运行时设备配置与诊断
+
+backend 可以通过通用 TypeBox schema 为每个设备注册布尔、整数和选择配置项。
+Slash 会为六种语义状态分别注册动画、亮度和间隔。先通过 `devices` 获取设备 ID：
+
+```bash
+node apps/cli/dist/index.cjs device-config asusd:slash-<device-key>
+node apps/cli/dist/index.cjs device-config-set \
+  asusd:slash-<device-key> \
+  states.working.effect \
+  spectrum
+node apps/cli/dist/index.cjs device-config-set \
+  asusd:slash-<device-key> \
+  states.working.brightness \
+  160
+node apps/cli/dist/index.cjs diagnostics
+```
+
+更新会立即重新应用当前语义状态。`diagnostics` 会展示 backend 健康状态、每个设备
+最近请求与实际应用的视觉状态、设备效果细节和降级原因。这一阶段的设备配置只保存在
+daemon 内存中；P5 再负责配置文件持久化、迁移和原子保存。
 
 只查看测试计划、不写硬件：
 
