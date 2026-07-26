@@ -5,14 +5,16 @@ import path from 'node:path';
 
 const CLI_BUNDLE = path.resolve('apps/cli/dist/index.cjs');
 const DAEMON_BUNDLE = path.resolve('apps/daemon/dist/index.cjs');
+const DESKTOP_BUNDLE = path.resolve('apps/desktop/dist/index.cjs');
 const EXPECTED_VERSION = '0.1.0-dev';
 const TIMEOUT_MILLISECONDS = 5000;
 
 await assertVersion(CLI_BUNDLE);
 await assertVersion(DAEMON_BUNDLE);
+await assertVersion(DESKTOP_BUNDLE);
 await assertMvpClosure();
 
-console.log('Built CLI → daemon → fake backend smoke tests passed.');
+console.log('Built Desktop/CLI → daemon → fake backend smoke tests passed.');
 
 async function assertVersion(bundle: string): Promise<void> {
 	const result = await runProcess(bundle, ['--version']);

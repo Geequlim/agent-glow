@@ -9,6 +9,7 @@ develop:
         - yarn --cwd packages/backend-asusd vitest run
         - yarn --cwd apps/daemon vitest run
         - yarn --cwd apps/cli vitest run
+        - yarn --cwd apps/desktop vitest run
     - name: architecture
       description: 检查硬件无关核心的依赖边界
       command: node scripts/check-architecture.mts
@@ -23,6 +24,8 @@ develop:
         - yarn --cwd packages/backend-asusd tsc --noEmit
         - yarn --cwd apps/daemon tsc --noEmit
         - yarn --cwd apps/cli tsc --noEmit
+        - yarn --cwd apps/desktop node-gtk generate-types Gtk-4.0 Adw-1 --outdir .cache/types
+        - yarn --cwd apps/desktop tsc --noEmit
     - name: lint
       description: 使用 Oxlint 执行静态代码分析
       command: yarn oxlint -c oxlint.config.mts -f stylish apps packages scripts
@@ -38,10 +41,18 @@ develop:
           description: 检查代码格式
           command: yarn oxfmt --check apps packages scripts
     - name: build
-      description: 构建 daemon 与 CLI bundle
+      description: 构建 daemon、CLI 与 Desktop bundle
       command:
         - yarn --cwd apps/daemon rspack build
         - yarn --cwd apps/cli rspack build
+        - yarn --cwd apps/desktop node-gtk generate-types Gtk-4.0 Adw-1 --outdir .cache/types
+        - yarn --cwd apps/desktop rspack build
+    - name: desktop
+      description: 构建并启动 GTK 桌面应用
+      command:
+        - yarn --cwd apps/desktop node-gtk generate-types Gtk-4.0 Adw-1 --outdir .cache/types
+        - yarn --cwd apps/desktop rspack build
+        - node --enable-source-maps apps/desktop/dist/index.cjs
     - name: smoke
       description: 验证 daemon 与 CLI 构建产物
       command:

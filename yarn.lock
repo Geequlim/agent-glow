@@ -78,6 +78,21 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@agent-glow/desktop@workspace:apps/desktop":
+  version: 0.0.0-use.local
+  resolution: "@agent-glow/desktop@workspace:apps/desktop"
+  dependencies:
+    "@rspack/cli": "npm:2.1.4"
+    "@rspack/core": "npm:2.1.4"
+    "@types/node": "npm:24.13.3"
+    commander: "npm:15.0.0"
+    node-gtk: "npm:4.1.1"
+    ts-checker-rspack-plugin: "npm:1.5.2"
+    typescript: "npm:7.0.2"
+    vitest: "npm:4.1.10"
+  languageName: unknown
+  linkType: soft
+
 "@agent-glow/protocol@workspace:^, @agent-glow/protocol@workspace:packages/protocol":
   version: 0.0.0-use.local
   resolution: "@agent-glow/protocol@workspace:packages/protocol"

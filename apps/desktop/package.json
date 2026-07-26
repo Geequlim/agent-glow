@@ -1,0 +1,21 @@
+{
+	"name": "@agent-glow/desktop",
+	"version": "0.1.0-dev",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"commander": "15.0.0",
+		"node-gtk": "4.1.1"
+	},
+	"devDependencies": {
+		"@rspack/cli": "2.1.4",
+		"@rspack/core": "2.1.4",
+		"@types/node": "24.13.3",
+		"ts-checker-rspack-plugin": "1.5.2",
+		"typescript": "7.0.2",
+		"vitest": "4.1.10"
+	},
+	"engines": {
+		"node": ">=24"
+	}
+}

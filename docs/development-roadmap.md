@@ -386,6 +386,10 @@ P5 不创建 Desktop、不写 Agent Hook 安装器、不制作 AUR/发布压缩�
 
 MobX store 只保存 UI 与 RPC 状态。颜色插值、租约、配置落盘、D-Bus 和服务真相仍属于 daemon。
 
+P6-A 的工程壳已建立：`apps/desktop` 可构建并打开 GTK4/libadwaita 空窗口，Command
+入口、GI 类型生成、无显示单元测试和 `yarn tiny desktop` 快捷启动均已接入。窗口
+信息架构与视觉方案将在此可运行基线上另行确定。
+
 ### 9.2 验收门槛
 
 - 断开 Desktop 不会影响 daemon 和现有灯效。
