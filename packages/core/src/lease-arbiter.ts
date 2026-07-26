@@ -4,7 +4,9 @@ import type { SemanticState } from '@agent-glow/protocol/semantic-state';
 import { selectHighestPriorityState } from './state-priority.js';
 
 export const DEFAULT_PULSE_TTL_MS = 1500;
+export const DEFAULT_RETAINED_STATE_TTL_MS = 10 * 60 * 1000;
 export const DEFAULT_STALE_LEASE_TTL_MS = 5 * 60 * 1000;
+const RETAINED_STATES = new Set<SemanticState>(['paused', 'success', 'error']);
 
 export interface MonotonicClock {
 	now(): number;
@@ -24,11 +26,21 @@ const systemClock: MonotonicClock = {
 export class LeaseArbiter {
 	readonly #clock: MonotonicClock;
 	readonly #leases = new Map<string, Lease>();
+	#retainedStateTtlMs: number;
 	#staleLeaseTtlMs: number;
 
-	constructor(clock: MonotonicClock = systemClock, staleLeaseTtlMs = DEFAULT_STALE_LEASE_TTL_MS) {
+	constructor(
+		clock: MonotonicClock = systemClock,
+		staleLeaseTtlMs = DEFAULT_STALE_LEASE_TTL_MS,
+		retainedStateTtlMs = DEFAULT_RETAINED_STATE_TTL_MS,
+	) {
 		this.#clock = clock;
+		this.#retainedStateTtlMs = retainedStateTtlMs;
 		this.#staleLeaseTtlMs = staleLeaseTtlMs;
+	}
+
+	setRetainedStateTtlMs(retainedStateTtlMs: number): void {
+		this.#retainedStateTtlMs = retainedStateTtlMs;
 	}
 
 	setStaleLeaseTtlMs(staleLeaseTtlMs: number): void {
@@ -42,9 +54,12 @@ export class LeaseArbiter {
 		if (event.phase === 'leave') {
 			this.#leases.delete(key);
 		} else {
-			const ttlMs =
-				event.ttlMs ??
-				(event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : this.#staleLeaseTtlMs);
+			if (event.state !== 'idle') this.#removeRetainedStates();
+			const retained = RETAINED_STATES.has(event.state);
+			const ttlMs = retained
+				? Math.min(event.ttlMs ?? this.#retainedStateTtlMs, this.#retainedStateTtlMs)
+				: (event.ttlMs ??
+					(event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : this.#staleLeaseTtlMs));
 			this.#leases.set(key, {
 				source: event.source,
 				sessionId: event.sessionId,
@@ -83,6 +98,12 @@ export class LeaseArbiter {
 		const now = this.#clock.now();
 		for (const [key, lease] of this.#leases) {
 			if (lease.expiresAt !== undefined && lease.expiresAt <= now) this.#leases.delete(key);
+		}
+	}
+
+	#removeRetainedStates(): void {
+		for (const [key, lease] of this.#leases) {
+			if (RETAINED_STATES.has(lease.state)) this.#leases.delete(key);
 		}
 	}
 }

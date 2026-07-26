@@ -37,6 +37,24 @@ describe('VisualStateEngine', () => {
 		expect(engine.isAnimating()).toBe(true);
 	});
 
+	it('produces several visible intermediate frames at the default cadence', () => {
+		const clock = new FakeClock();
+		const paused = getSemanticVisualEffect('paused');
+		if (paused.effect !== 'static') throw new Error('Paused fixture must be static');
+		const engine = new VisualStateEngine(getSemanticVisualEffect('idle'), clock, 300);
+		engine.setTarget(paused);
+
+		const intensities = [67, 133, 200, 267].map((time) => {
+			clock.nowValue = time;
+			return engine.frame().intensity;
+		});
+
+		expect(intensities).toEqual([...intensities].sort((left, right) => left - right));
+		expect(new Set(intensities.map((intensity) => intensity.toFixed(4))).size).toBe(4);
+		expect(intensities[0]).toBeGreaterThan(0);
+		expect(intensities.at(-1)).toBeLessThan(paused.intensity);
+	});
+
 	it('reports a completed one-shot pulse as no longer animating', () => {
 		const clock = new FakeClock();
 		const success = getSemanticVisualEffect('success');

@@ -241,9 +241,16 @@ export class DesktopState {
 		this.#scheduleConfig();
 	}
 
+	updateRetainedStateTimeout(timeoutMs: number): void {
+		this.config.daemon.retainedStateTimeoutMs = timeoutMs;
+		this.#scheduleConfig();
+	}
+
 	restoreDefaultStyles(): void {
 		const defaults = createDefaultConfig();
 		this.config.profiles = structuredClone(defaults.profiles);
+		this.config.daemon.frameRate = defaults.daemon.frameRate;
+		this.config.daemon.retainedStateTimeoutMs = defaults.daemon.retainedStateTimeoutMs;
 		this.config.rendering.transitionMs = defaults.rendering.transitionMs;
 		this.#scheduleConfig();
 	}

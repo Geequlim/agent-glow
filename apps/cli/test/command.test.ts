@@ -330,7 +330,6 @@ describe('runCli', () => {
 					event: {
 						state: 'success',
 						phase: 'pulse',
-						ttlMs: 1500,
 					},
 				},
 			],
@@ -361,7 +360,6 @@ describe('runCli', () => {
 					event: {
 						state: 'error',
 						phase: 'pulse',
-						ttlMs: 2000,
 					},
 				},
 			],

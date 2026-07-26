@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	DEFAULT_PULSE_TTL_MS,
+	DEFAULT_RETAINED_STATE_TTL_MS,
 	DEFAULT_STALE_LEASE_TTL_MS,
 	LeaseArbiter,
 	type MonotonicClock,
@@ -29,16 +30,56 @@ describe('LeaseArbiter', () => {
 		expect(arbiter.apply(event('waiting_permission', 'leave'))).toBe('working');
 	});
 
-	it('expires a pulse using the injected monotonic clock', () => {
+	it('keeps a retained result until its configured maximum duration', () => {
 		const clock = new FakeClock();
 		const arbiter = new LeaseArbiter(clock);
 
 		arbiter.apply(event('working', 'enter'));
 		expect(arbiter.apply(event('success', 'pulse'))).toBe('success');
 
+		clock.advance(DEFAULT_RETAINED_STATE_TTL_MS - 1);
+		expect(arbiter.currentState()).toBe('success');
+		clock.advance(1);
+
+		expect(arbiter.currentState()).toBe('idle');
+	});
+
+	it('keeps the short default TTL for non-retained pulse events', () => {
+		const clock = new FakeClock();
+		const arbiter = new LeaseArbiter(clock);
+
+		arbiter.apply(event('working', 'pulse'));
 		clock.advance(DEFAULT_PULSE_TTL_MS);
 
-		expect(arbiter.currentState()).toBe('working');
+		expect(arbiter.currentState()).toBe('idle');
+	});
+
+	it('replaces a retained result when any new activity arrives', () => {
+		const arbiter = new LeaseArbiter();
+		arbiter.apply(event('error', 'pulse', 'completed-session'));
+
+		expect(arbiter.apply(event('working', 'enter', 'new-session'))).toBe('working');
+	});
+
+	it('uses an updated retained timeout for new results and paused states', () => {
+		const clock = new FakeClock();
+		const arbiter = new LeaseArbiter(clock);
+		arbiter.setRetainedStateTtlMs(20);
+		arbiter.apply(event('paused', 'enter'));
+
+		clock.advance(20);
+
+		expect(arbiter.currentState()).toBe('idle');
+	});
+
+	it('treats the configured retained timeout as an upper bound', () => {
+		const clock = new FakeClock();
+		const arbiter = new LeaseArbiter(clock, DEFAULT_STALE_LEASE_TTL_MS, 20);
+		arbiter.apply({ ...event('error', 'pulse'), ttlMs: 100 });
+
+		clock.advance(20);
+
+		expect(arbiter.currentState()).toBe('idle');
 	});
 
 	it('keeps another session active when one session is cleared', () => {

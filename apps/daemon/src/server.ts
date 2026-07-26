@@ -17,6 +17,7 @@ import {
 	staticVisualStateFingerprint,
 } from '@agent-glow/core/latest-value-scheduler';
 import { LeaseArbiter } from '@agent-glow/core/lease-arbiter';
+import { PresentationStateGuard } from '@agent-glow/core/presentation-state-guard';
 import {
 	getSemanticVisualEffect,
 	renderVisualFrame,
@@ -87,7 +88,14 @@ export async function startDaemonServer(
 
 	const configRepository = options.configRepository ?? createFileConfigRepository();
 	let config = validateConfigValue(structuredClone(await configRepository.load()));
-	const arbiter = new LeaseArbiter(undefined, config.daemon.staleSessionTimeoutMs);
+	const arbiter = new LeaseArbiter(
+		undefined,
+		config.daemon.staleSessionTimeoutMs,
+		config.daemon.retainedStateTimeoutMs,
+	);
+	const presentation = new PresentationStateGuard(
+		(state) => config.profiles[state].minimumVisibleMs,
+	);
 	const visualEngine = new VisualStateEngine(
 		configuredVisualEffect(config, 'working'),
 		undefined,
@@ -185,7 +193,7 @@ export async function startDaemonServer(
 			case 'initialize':
 				return { protocolVersion: PROTOCOL_VERSION, daemonVersion };
 			case 'daemon.getStatus':
-				return { lifecycle: 'running', currentState: arbiter.currentState() };
+				return { lifecycle: 'running', currentState: currentVisualState() };
 			case 'config.get':
 				return enqueueConfigTransaction(() => Promise.resolve(structuredClone(config)));
 			case 'config.validate':
@@ -252,7 +260,8 @@ export async function startDaemonServer(
 				};
 			}
 			case 'event.emit': {
-				const currentState = arbiter.apply(request.params.event);
+				arbiter.apply(request.params.event);
+				const currentState = currentVisualState();
 				if (!previewState)
 					await displayState(currentState, request.params.event.phase === 'pulse');
 				return { accepted: true, currentState };
@@ -260,7 +269,7 @@ export async function startDaemonServer(
 			case 'event.clear': {
 				const { source, sessionId, state } = request.params;
 				const cleared = arbiter.clear(source, sessionId, state);
-				const currentState = arbiter.currentState();
+				const currentState = currentVisualState();
 				if (!previewState) await displayState(currentState);
 				return { cleared, currentState };
 			}
@@ -278,7 +287,7 @@ export async function startDaemonServer(
 						...event,
 					});
 				}
-				const currentState = arbiter.currentState();
+				const currentState = currentVisualState();
 				if (!previewState) await displayState(currentState, event?.phase === 'pulse');
 				return { cleared, currentState };
 			}
@@ -318,8 +327,9 @@ export async function startDaemonServer(
 
 		const previousConfig = config;
 		config = candidate;
+		arbiter.setRetainedStateTtlMs(config.daemon.retainedStateTimeoutMs);
 		arbiter.setStaleLeaseTtlMs(config.daemon.staleSessionTimeoutMs);
-		const currentState = previewState ?? arbiter.currentState();
+		const currentState = currentVisualState();
 		visualEngine.setTransitionDurationMs(config.rendering.transitionMs);
 		if (
 			currentState !== 'idle' &&
@@ -526,7 +536,7 @@ export async function startDaemonServer(
 		previewTimer = undefined;
 		if (!previewState) return;
 		previewState = undefined;
-		await displayState(arbiter.currentState());
+		await displayState(currentVisualState());
 	}
 
 	function recordApplyResult(deviceId: string, result: BackendApplyResult): void {
@@ -601,7 +611,7 @@ export async function startDaemonServer(
 		snapshots = refreshedSnapshots;
 		scheduler.invalidate();
 		lifecyclePaused = false;
-		if (arbiter.currentState() === 'idle') {
+		if (currentVisualState() === 'idle') {
 			await scheduler.pause();
 			if (reason !== 'startup') await restoreBackendSnapshots(backend, snapshots);
 			displayedState = 'idle';
@@ -652,7 +662,7 @@ export async function startDaemonServer(
 
 	function animate(): void {
 		if (lifecyclePaused) return;
-		const currentState = previewState ?? arbiter.currentState();
+		const currentState = currentVisualState();
 		const changed = currentState !== displayedState;
 		if (changed) {
 			if (!stateSyncPending) {
@@ -674,6 +684,10 @@ export async function startDaemonServer(
 		if (currentState !== 'idle' && visualEngine.isAnimating()) {
 			submitFrame(visualEngine.frame());
 		}
+	}
+
+	function currentVisualState(): ReturnType<LeaseArbiter['currentState']> {
+		return previewState ?? presentation.select(arbiter.currentState());
 	}
 
 	return {

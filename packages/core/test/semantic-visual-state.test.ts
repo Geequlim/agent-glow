@@ -76,17 +76,28 @@ describe('semantic visual effects', () => {
 		expect(nextCycle).toEqual(initial);
 	});
 
-	it('renders success as one pulse and error as two pulses', () => {
+	it('renders success as two green peaks that settle on low Codex blue', () => {
 		const success = getSemanticVisualEffect('success');
-		const error = getSemanticVisualEffect('error');
-		if (success.effect !== 'pulse' || error.effect !== 'pulse') {
-			throw new Error('success and error must pulse');
-		}
+		if (success.effect !== 'pulse') throw new Error('success must pulse');
 
-		expect(renderVisualFrame(success, success.durationMs / 2).intensity).toBeCloseTo(1);
-		expect(renderVisualFrame(success, success.durationMs).intensity).toBeCloseTo(
-			success.minimumIntensity,
-		);
+		const firstPeak = renderVisualFrame(success, success.durationMs / 4);
+		const secondPeak = renderVisualFrame(success, (success.durationMs * 3) / 4);
+		const completed = renderVisualFrame(success, success.durationMs);
+
+		expect(firstPeak.color).toEqual(success.endColor);
+		expect(firstPeak.intensity).toBeCloseTo(success.maximumIntensity);
+		expect(secondPeak.color).toEqual(success.endColor);
+		expect(secondPeak.intensity).toBeCloseTo(success.maximumIntensity);
+		expect(completed.color.red).toBeCloseTo(success.startColor.red);
+		expect(completed.color.green).toBeCloseTo(success.startColor.green);
+		expect(completed.color.blue).toBeCloseTo(success.startColor.blue);
+		expect(completed.intensity).toBeCloseTo(success.minimumIntensity);
+	});
+
+	it('renders error as two full pulses', () => {
+		const error = getSemanticVisualEffect('error');
+		if (error.effect !== 'pulse') throw new Error('error must pulse');
+
 		expect(renderVisualFrame(error, error.durationMs / 4).intensity).toBeCloseTo(1);
 		expect(renderVisualFrame(error, (error.durationMs * 3) / 4).intensity).toBeCloseTo(1);
 	});

@@ -122,7 +122,7 @@ describe('DiagnosticsResultSchema', () => {
 					entryPath: '/usr/lib/agent-glow/apps/daemon/dist/index.cjs',
 					runtimePath: '/usr/lib/agent-glow/runtime/bin/node',
 				},
-				backend: { id: 'asusd', health: 'healthy' },
+				backend: { id: 'fixture', health: 'healthy' },
 				devices: [],
 			}),
 		).toBe(true);
@@ -134,10 +134,15 @@ const staticProfile = {
 	effect: 'static',
 	hardwareIntensity: 0.2,
 	intensity: 0.25,
+	minimumVisibleMs: 500,
 } as const;
 const validConfig = {
 	version: 1,
-	daemon: { frameRate: 10, staleSessionTimeoutMs: 300_000 },
+	daemon: {
+		frameRate: 10,
+		retainedStateTimeoutMs: 600_000,
+		staleSessionTimeoutMs: 300_000,
+	},
 	rendering: { colorSpace: 'linear-rgb', restoreOnExit: true, transitionMs: 300 },
 	profiles: {
 		working: staticProfile,

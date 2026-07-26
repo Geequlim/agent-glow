@@ -5,7 +5,11 @@ import { AgentGlowConfigSchema } from '../src/config.js';
 
 const validConfig = {
 	version: 1,
-	daemon: { frameRate: 10, staleSessionTimeoutMs: 300_000 },
+	daemon: {
+		frameRate: 10,
+		retainedStateTimeoutMs: 600_000,
+		staleSessionTimeoutMs: 300_000,
+	},
 	rendering: { colorSpace: 'linear-rgb', restoreOnExit: true, transitionMs: 300 },
 	profiles: {
 		working: {
@@ -13,6 +17,7 @@ const validConfig = {
 			endColor: '#5865F2',
 			effect: 'breathe',
 			hardwareIntensity: 0.7,
+			minimumVisibleMs: 500,
 			minimumIntensity: 0.08,
 			maximumIntensity: 1,
 			periodMs: 2200,
@@ -22,6 +27,7 @@ const validConfig = {
 			endColor: '#5870FE',
 			effect: 'stream',
 			hardwareIntensity: 0.8,
+			minimumVisibleMs: 800,
 			minimumIntensity: 0.3,
 			maximumIntensity: 0.9,
 			periodMs: 1000,
@@ -31,6 +37,7 @@ const validConfig = {
 			endColor: '#FF9F1C',
 			effect: 'breathe',
 			hardwareIntensity: 1,
+			minimumVisibleMs: 600,
 			minimumIntensity: 0.15,
 			maximumIntensity: 1,
 			periodMs: 900,
@@ -40,6 +47,7 @@ const validConfig = {
 			endColor: '#35C759',
 			effect: 'pulse',
 			hardwareIntensity: 0.9,
+			minimumVisibleMs: 1000,
 			minimumIntensity: 0.15,
 			maximumIntensity: 1,
 			durationMs: 900,
@@ -50,6 +58,7 @@ const validConfig = {
 			endColor: '#FF3B30',
 			effect: 'pulse',
 			hardwareIntensity: 1,
+			minimumVisibleMs: 1200,
 			minimumIntensity: 0.15,
 			maximumIntensity: 1,
 			durationMs: 1000,
@@ -60,6 +69,7 @@ const validConfig = {
 			effect: 'static',
 			hardwareIntensity: 0.3,
 			intensity: 0.25,
+			minimumVisibleMs: 500,
 		},
 	},
 	devices: {
@@ -86,6 +96,12 @@ describe('AgentGlowConfigSchema', () => {
 			Value.Check(AgentGlowConfigSchema, {
 				...validConfig,
 				daemon: { ...validConfig.daemon, frameRate: 21 },
+			}),
+		).toBe(false);
+		expect(
+			Value.Check(AgentGlowConfigSchema, {
+				...validConfig,
+				daemon: { ...validConfig.daemon, retainedStateTimeoutMs: 86_400_001 },
 			}),
 		).toBe(false);
 		expect(

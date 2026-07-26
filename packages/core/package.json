@@ -11,6 +11,7 @@
 		"./fake-backend": "./src/fake-backend.ts",
 		"./lease-arbiter": "./src/lease-arbiter.ts",
 		"./latest-value-scheduler": "./src/latest-value-scheduler.ts",
+		"./presentation-state-guard": "./src/presentation-state-guard.ts",
 		"./semantic-visual-state": "./src/semantic-visual-state.ts",
 		"./state-priority": "./src/state-priority.ts",
 		"./visual-state-engine": "./src/visual-state-engine.ts"

@@ -7,6 +7,7 @@ const unitInterval = { minimum: 0, maximum: 1 } as const;
 const HexColorSchema = Type.String({ pattern: '^#[0-9A-Fa-f]{6}$' });
 const commonProfileFields = {
 	hardwareIntensity: Type.Number(unitInterval),
+	minimumVisibleMs: Type.Integer({ minimum: 0, maximum: 5000 }),
 };
 const animatedColorFields = {
 	startColor: HexColorSchema,
@@ -73,6 +74,10 @@ export const AgentGlowConfigSchema = Type.Object(
 		daemon: Type.Object(
 			{
 				frameRate: Type.Integer({ minimum: 5, maximum: 20 }),
+				retainedStateTimeoutMs: Type.Integer({
+					minimum: 1000,
+					maximum: 86_400_000,
+				}),
 				staleSessionTimeoutMs: Type.Integer({ minimum: 1000, maximum: 86_400_000 }),
 			},
 			strict,

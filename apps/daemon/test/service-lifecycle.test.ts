@@ -81,7 +81,7 @@ describe('P5 service lifecycle', () => {
 			source: 'test',
 			sessionId: 'system-default',
 		});
-		expect(backend.restoreAttempts).toBe(restoresBeforeTakeover + 1);
+		await waitFor(() => backend.restoreAttempts === restoresBeforeTakeover + 1, 700);
 		await daemon.close();
 	});
 
@@ -110,7 +110,7 @@ describe('P5 service lifecycle', () => {
 
 	it('atomically clears lifecycle leases before applying a completion pulse', async () => {
 		const backend = new LifecycleBackend(true);
-		const daemon = await startTestDaemon(backend);
+		const daemon = await startTestDaemon(backend, undefined, 0);
 		const session = { source: 'zcode', sessionId: 'zcode-session' };
 		await request(daemon.socketPath, 'event.emit', {
 			event: {
@@ -142,6 +142,86 @@ describe('P5 service lifecycle', () => {
 		expect(await request(daemon.socketPath, 'daemon.getStatus', {})).toMatchObject({
 			currentState: 'idle',
 		});
+		await daemon.close();
+	});
+
+	it('protects the current visual state and skips superseded pending states', async () => {
+		const backend = new LifecycleBackend(true);
+		const daemon = await startTestDaemon(backend, undefined, 40);
+		const session = { source: 'test', sessionId: 'presentation-guard' };
+
+		expect(
+			await request(daemon.socketPath, 'event.emit', {
+				event: { version: 1, ...session, state: 'working', phase: 'enter' },
+			}),
+		).toMatchObject({ currentState: 'working' });
+		expect(
+			await request(daemon.socketPath, 'event.emit', {
+				event: { version: 1, ...session, state: 'tool_use', phase: 'enter' },
+			}),
+		).toMatchObject({ currentState: 'working' });
+		expect(
+			await request(daemon.socketPath, 'event.emit', {
+				event: { version: 1, ...session, state: 'waiting_permission', phase: 'enter' },
+			}),
+		).toMatchObject({ currentState: 'working' });
+		expect(
+			await request(daemon.socketPath, 'event.clear', {
+				...session,
+				state: 'waiting_permission',
+			}),
+		).toMatchObject({ currentState: 'working' });
+
+		await delay(50);
+		expect(await request(daemon.socketPath, 'daemon.getStatus', {})).toMatchObject({
+			currentState: 'tool_use',
+		});
+		expect(
+			backend.commits.some((commit) => commit.semanticState === 'waiting_permission'),
+		).toBe(false);
+		await daemon.close();
+	});
+
+	it('retains results up to the configured timeout and lets new activity replace them', async () => {
+		const backend = new LifecycleBackend(true);
+		const daemon = await startTestDaemon(backend, undefined, 0, 1000);
+
+		expect(
+			await request(daemon.socketPath, 'event.emit', {
+				event: {
+					version: 1,
+					source: 'test',
+					sessionId: 'completed',
+					state: 'success',
+					phase: 'pulse',
+				},
+			}),
+		).toMatchObject({ currentState: 'success' });
+		await delay(1050);
+		expect(await request(daemon.socketPath, 'daemon.getStatus', {})).toMatchObject({
+			currentState: 'idle',
+		});
+
+		await request(daemon.socketPath, 'event.emit', {
+			event: {
+				version: 1,
+				source: 'test',
+				sessionId: 'failed',
+				state: 'error',
+				phase: 'pulse',
+			},
+		});
+		expect(
+			await request(daemon.socketPath, 'event.emit', {
+				event: {
+					version: 1,
+					source: 'test',
+					sessionId: 'next-task',
+					state: 'working',
+					phase: 'enter',
+				},
+			}),
+		).toMatchObject({ currentState: 'working' });
 		await daemon.close();
 	});
 });
@@ -221,6 +301,17 @@ class LifecycleBackend implements LightingBackend {
 class MemoryConfigRepository implements DaemonConfigRepository {
 	readonly config = createDefaultConfig();
 
+	constructor(minimumVisibleMs?: number, retainedStateTimeoutMs?: number) {
+		if (minimumVisibleMs !== undefined) {
+			for (const profile of Object.values(this.config.profiles)) {
+				profile.minimumVisibleMs = minimumVisibleMs;
+			}
+		}
+		if (retainedStateTimeoutMs !== undefined) {
+			this.config.daemon.retainedStateTimeoutMs = retainedStateTimeoutMs;
+		}
+	}
+
 	async load(): Promise<AgentGlowConfig> {
 		return structuredClone(this.config);
 	}
@@ -233,17 +324,26 @@ class MemoryConfigRepository implements DaemonConfigRepository {
 	}
 }
 
-async function startTestDaemon(backend: LightingBackend, shutdownTimeoutMs?: number) {
+async function startTestDaemon(
+	backend: LightingBackend,
+	shutdownTimeoutMs?: number,
+	minimumVisibleMs?: number,
+	retainedStateTimeoutMs?: number,
+) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'agent-glow-service-lifecycle-'));
 	temporaryDirectories.push(directory);
 	return startDaemonServer('test', path.join(directory, 'runtime', 'daemon.sock'), backend, {
-		configRepository: new MemoryConfigRepository(),
+		configRepository: new MemoryConfigRepository(minimumVisibleMs, retainedStateTimeoutMs),
 		...(shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs }),
 	});
 }
 
-async function waitFor(predicate: () => boolean | Promise<boolean>): Promise<void> {
-	for (let attempt = 0; attempt < 100; attempt += 1) {
+async function waitFor(
+	predicate: () => boolean | Promise<boolean>,
+	timeoutMs = 500,
+): Promise<void> {
+	const deadline = performance.now() + timeoutMs;
+	while (performance.now() < deadline) {
 		if (await predicate()) return;
 		await delay(5);
 	}

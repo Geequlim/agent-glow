@@ -38,6 +38,7 @@ class FixtureTransport implements AsusdTransport {
 	ignoreAuraWrites = false;
 	lifecycleListener: ((event: AsusdLifecycleEvent) => void) | undefined;
 	managedObjectReads = 0;
+	auraModeReads = 0;
 
 	async readManagedObjects(): Promise<readonly ManagedObject[]> {
 		this.managedObjectReads += 1;
@@ -78,6 +79,7 @@ class FixtureTransport implements AsusdTransport {
 		}
 		if (propertyName === 'Brightness') return structuredClone(this.auraBrightness);
 		if (propertyName === 'LedPower') return structuredClone(this.auraPower);
+		this.auraModeReads += 1;
 		return structuredClone(this.current);
 	}
 
@@ -173,6 +175,33 @@ describe('AsusdLightingBackend', () => {
 			'Brightness',
 			'LedPower',
 		]);
+	});
+
+	it('reuses captured Aura mode data across animation frames', async () => {
+		const transport = new FixtureTransport();
+		const backend = new AsusdLightingBackend(transport);
+		const device = (await backend.discoverDevices()).find((item) =>
+			item.id.startsWith('asusd:aura-'),
+		);
+		if (!device) throw new Error('Fixture device missing');
+		await backend.captureSnapshot(device.id);
+		const readsAfterSnapshot = transport.auraModeReads;
+
+		await backend.applyVisualState(device.id, {
+			color: { red: 32, green: 64, blue: 128 },
+			hardwareIntensity: 0.7,
+			intensity: 0.4,
+			semanticState: 'working',
+		});
+		await backend.applyVisualState(device.id, {
+			color: { red: 64, green: 96, blue: 160 },
+			hardwareIntensity: 0.7,
+			intensity: 0.5,
+			semanticState: 'working',
+		});
+
+		expect(transport.auraModeReads).toBe(readsAfterSnapshot);
+		expect(transport.writes).toHaveLength(2);
 	});
 
 	it('rejects an Aura restoration that the service did not apply', async () => {

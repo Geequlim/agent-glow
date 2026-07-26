@@ -345,14 +345,12 @@ export async function adaptLifecycleHook(
 				await transition(['waiting_permission', 'tool_use'], {
 					state: 'error',
 					phase: 'pulse',
-					ttlMs: 2000,
 				});
 				break;
 			case 'Stop':
 				await transition(['waiting_permission', 'tool_use', 'working'], {
 					state: 'success',
 					phase: 'pulse',
-					ttlMs: 1500,
 				});
 				break;
 			case 'SessionEnd':

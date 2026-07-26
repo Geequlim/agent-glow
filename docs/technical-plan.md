@@ -226,9 +226,9 @@ type SemanticState =
 | `working`            | 蓝紫色缓慢呼吸             | 持续状态           |
 | `tool_use`           | 青蓝色较快呼吸             | 工具调用期间       |
 | `waiting_permission` | 琥珀色较快呼吸             | 持续到授权或取消   |
-| `success`            | 绿色柔和闪现后回落         | 瞬态，默认 1.5 秒  |
-| `error`              | 红色双脉冲后保持低亮度     | 瞬态叠加或持续错误 |
-| `paused`             | 暖白低亮度静态             | 持续状态           |
+| `success`            | 绿色双脉冲后低亮蓝色保持   | 最长默认 10 分钟   |
+| `error`              | 红色双脉冲后低亮保持       | 最长默认 10 分钟   |
+| `paused`             | 暖白低亮度静态             | 最长默认 10 分钟   |
 
 主动状态的默认效果只是默认参数，用户可在 UI 中修改；基础状态不提供主题配置。
 
@@ -305,7 +305,8 @@ interface VisualState {
 
 ### 6.2 平滑过渡
 
-状态切换默认使用 120 毫秒交叉渐变，范围可配置为 0–2000 毫秒。
+状态切换默认使用 300 毫秒交叉渐变，范围可配置为 0–2000 毫秒；默认以 15 FPS
+生成软件动画帧，确保一次切换包含多个可辨认的中间状态。
 
 颜色插值不能直接在 8 位 sRGB 数值上做线性运算。建议流程：
 
@@ -314,9 +315,16 @@ interface VisualState {
 3. 转回 sRGB；
 4. 量化为设备需要的整数通道。
 
-默认缓动使用 `easeInOutSine`。这样暗部变化更自然，也能减少颜色在低亮度下突然跳变。
+默认缓动使用 `easeInOutCubic`。这样暗部变化更自然，也能减少颜色在低亮度下突然跳变。
 
-### 6.3 呼吸效果
+### 6.3 最短展示保护
+
+每个非 `idle` 状态都声明 `minimumVisibleMs`。状态一旦真正开始展示，在保护时间
+结束前保持当前效果；这段时间内不建立待播队列，只持续读取仲裁器的最新目标。保护
+结束后直接切换到当时仍然有效的目标，因此期间被后续事件替换的中间状态会被省略。
+重复收到当前状态不会延长保护截止时间。`idle` 不占用保护时间，新任务可以立即开始。
+
+### 6.4 呼吸效果
 
 软件呼吸使用连续相位：
 
@@ -336,7 +344,7 @@ intensity(t) = min + (max - min) × (1 - cos(2πt / period)) / 2
 
 当设备原生支持 `Breathe` 且用户选择“硬件效果”时，可直接使用固件动画，降低写入频率。需要精确颜色、渐变或跨状态衔接时，使用软件渲染的静态帧。
 
-### 6.4 写入频率和背压
+### 6.5 写入频率和背压
 
 首版软件动画默认 10 Hz，可在 5–20 Hz 安全范围内配置。不是所有设备都适合高频写入，因此最终上限由各 backend 声明的设备能力和稳定性策略共同决定。
 
@@ -350,7 +358,7 @@ intensity(t) = min + (max - min) × (1 - cos(2πt / period)) / 2
 - 连续失败后暂停该设备动画并报告降级状态；
 - daemon 退出时停止调度器，再执行恢复。
 
-### 6.5 能力降级
+### 6.6 能力降级
 
 统一主题按设备能力映射，Aura 和 Slash 只是首个 backend 的实例：
 
@@ -433,13 +441,14 @@ $XDG_CONFIG_HOME/agent-glow/config.yaml
 version: 1
 
 daemon:
-    frameRate: 10
+    frameRate: 15
+    retainedStateTimeoutMs: 600000
     staleSessionTimeoutMs: 300000
 
 rendering:
     colorSpace: linear-rgb
     restoreOnExit: true
-    transitionMs: 120
+    transitionMs: 300
 
 profiles:
     working:
@@ -447,6 +456,7 @@ profiles:
         endColor: '#5865F2'
         effect: breathe
         hardwareIntensity: 0.65
+        minimumVisibleMs: 500
         minimumIntensity: 0.22
         maximumIntensity: 0.72
         periodMs: 2800
@@ -455,6 +465,7 @@ profiles:
         endColor: '#5865F2'
         effect: stream
         hardwareIntensity: 0.8
+        minimumVisibleMs: 800
         minimumIntensity: 0.3
         maximumIntensity: 0.9
         periodMs: 1000
@@ -463,23 +474,26 @@ profiles:
         endColor: '#FF9F1C'
         effect: breathe
         hardwareIntensity: 0.85
+        minimumVisibleMs: 600
         minimumIntensity: 0.2
         maximumIntensity: 0.9
         periodMs: 1000
     success:
-        startColor: '#35C759'
+        startColor: '#5865F2'
         endColor: '#35C759'
         effect: pulse
-        hardwareIntensity: 0.75
-        minimumIntensity: 0.15
-        maximumIntensity: 1
-        durationMs: 1000
-        pulseCount: 1
+        hardwareIntensity: 0.65
+        minimumVisibleMs: 1800
+        minimumIntensity: 0.18
+        maximumIntensity: 0.85
+        durationMs: 1800
+        pulseCount: 2
     error:
         startColor: '#FF3B30'
         endColor: '#FF3B30'
         effect: pulse
         hardwareIntensity: 0.9
+        minimumVisibleMs: 1200
         minimumIntensity: 0.15
         maximumIntensity: 1
         durationMs: 1200
@@ -489,6 +503,7 @@ profiles:
         effect: static
         hardwareIntensity: 0.18
         intensity: 0.18
+        minimumVisibleMs: 500
 
 devices:
     'backend:stable-device-id':
@@ -508,6 +523,11 @@ devices:
 - 不认识的新字段默认报错，避免拼写错误静默失效；
 - 配置应用失败时保留旧配置和旧运行态；
 - 密钥不属于本项目配置。
+
+`retainedStateTimeoutMs` 是成功、失败和暂停状态的统一最长保持时间。成功与失败的
+一次性动画结束后保持最低亮度帧，暂停保持其静态效果；新的非空闲事件会清理旧的保持
+状态，超时且没有新活动时恢复系统灯光。该上限不替代各 profile 的
+`minimumVisibleMs`。
 
 ## 10. 配置界面
 

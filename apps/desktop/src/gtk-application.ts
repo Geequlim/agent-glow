@@ -285,7 +285,7 @@ function createStylesPage(
 	resetButton.on('clicked', () => {
 		const confirmation = new Adw.AlertDialog({
 			heading: '恢复全部灯光样式？',
-			body: '六个任务阶段和切换过渡将恢复为项目默认值，并立即应用。',
+			body: '六个任务阶段、最长保持时间和切换过渡将恢复为项目默认值，并立即应用。',
 			closeResponse: 'cancel',
 			defaultResponse: 'cancel',
 		});
@@ -303,12 +303,30 @@ function createStylesPage(
 		if (!syncingTransition) state.updateTransition(Math.round(transition.value));
 	});
 	actionGroup.add(transition);
+	const retainedStateTimeout = createSpinRow(
+		'成功、失败与暂停最长保持时间',
+		'分钟',
+		1,
+		1440,
+		1,
+		0,
+	);
+	let syncingRetainedStateTimeout = false;
+	retainedStateTimeout.on('notify::value', () => {
+		if (!syncingRetainedStateTimeout) {
+			state.updateRetainedStateTimeout(Math.round(retainedStateTimeout.value) * 60_000);
+		}
+	});
+	actionGroup.add(retainedStateTimeout);
 	page.add(actionGroup);
 	disposers.push(
 		autorun(() => {
 			syncingTransition = true;
 			transition.value = state.config.rendering.transitionMs;
 			syncingTransition = false;
+			syncingRetainedStateTimeout = true;
+			retainedStateTimeout.value = state.config.daemon.retainedStateTimeoutMs / 60_000;
+			syncingRetainedStateTimeout = false;
 		}),
 	);
 	for (const semanticState of CONFIGURABLE_STATES) {
@@ -354,6 +372,7 @@ function createProfileGroup(
 	endColorRow.addSuffix(endColor);
 	const effectModel = Gtk.StringList.new(['静态', '呼吸', '数据流', '脉冲']);
 	const effect = new Adw.ComboRow({ title: '动画', model: effectModel });
+	const minimumVisible = createSpinRow('最短展示时间', '毫秒', 0, 5000, 50, 0);
 	const hardware = createSpinRow('硬件亮度', '0–100%', 0, 100, 1, 0);
 	const intensity = createSpinRow('亮度', '0–100%', 0, 100, 1, 0);
 	const minimum = createSpinRow('最低亮度', '0–100%', 0, 100, 1, 0);
@@ -364,6 +383,7 @@ function createProfileGroup(
 	const group = new Adw.PreferencesGroup({ title: STATE_LABELS[semanticState] });
 	[
 		effect,
+		minimumVisible,
 		colorRow,
 		startColorRow,
 		endColorRow,
@@ -383,6 +403,7 @@ function createProfileGroup(
 			(['static', 'breathe', 'stream', 'pulse'] as const)[effect.selected] ?? 'static';
 		const common = {
 			hardwareIntensity: hardware.value / 100,
+			minimumVisibleMs: Math.round(minimumVisible.value),
 		};
 		const profile =
 			selectedEffect === 'static'
@@ -431,8 +452,8 @@ function createProfileGroup(
 	startColor.on('notify::rgba', submit);
 	endColor.on('notify::rgba', submit);
 	effect.on('notify::selected', submit);
-	[hardware, intensity, minimum, maximum, period, duration, pulseCount].forEach((row) =>
-		row.on('notify::value', submit),
+	[minimumVisible, hardware, intensity, minimum, maximum, period, duration, pulseCount].forEach(
+		(row) => row.on('notify::value', submit),
 	);
 	disposers.push(
 		autorun(() => {
@@ -447,6 +468,7 @@ function createProfileGroup(
 			endColor.rgba = parseRgba(primaryColor);
 			endColorRow.subtitle = primaryColor.toUpperCase();
 			effect.selected = { static: 0, breathe: 1, stream: 2, pulse: 3 }[profile.effect];
+			minimumVisible.value = profile.minimumVisibleMs;
 			hardware.value = profile.hardwareIntensity * 100;
 			intensity.value = profile.effect === 'static' ? profile.intensity * 100 : 100;
 			minimum.value = profile.effect === 'static' ? 0 : profile.minimumIntensity * 100;

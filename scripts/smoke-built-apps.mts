@@ -1,12 +1,18 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const CLI_BUNDLE = path.resolve('apps/cli/dist/index.cjs');
 const DAEMON_BUNDLE = path.resolve('apps/daemon/dist/index.cjs');
 const DESKTOP_BUNDLE = path.resolve('apps/desktop/dist/index.cjs');
-const EXPECTED_VERSION = '0.1.0-dev';
+const packageMetadata = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')) as {
+	readonly version?: unknown;
+};
+if (typeof packageMetadata.version !== 'string') {
+	throw new Error('Root package.json does not declare a string version');
+}
+const EXPECTED_VERSION = packageMetadata.version;
 const TIMEOUT_MILLISECONDS = 5000;
 
 await assertVersion(CLI_BUNDLE);
@@ -107,9 +113,9 @@ async function assertMvpClosure(): Promise<void> {
 		await assertCli(
 			environment,
 			['clear', '--source', 'smoke', '--session', 'session-1'],
-			'idle',
+			'working',
 		);
-		await assertCli(environment, ['status'], 'idle');
+		await waitForCli(environment, ['status'], 'idle');
 
 		child.kill('SIGTERM');
 		const code = await waitForClose(child);
@@ -170,6 +176,26 @@ async function assertCli(
 			)} stderr=${JSON.stringify(result.stderr)}`,
 		);
 	}
+}
+
+async function waitForCli(
+	environment: NodeJS.ProcessEnv,
+	args: readonly string[],
+	expectedOutput: string,
+): Promise<void> {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < TIMEOUT_MILLISECONDS) {
+		const result = await runProcess(CLI_BUNDLE, args, environment);
+		if (
+			result.code === 0 &&
+			result.stdout.trim() === expectedOutput &&
+			result.stderr.length === 0
+		) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+	throw new Error(`Timed out waiting for CLI ${args[0] ?? ''} to report ${expectedOutput}`);
 }
 
 async function assertSocketPermissions(socketPath: string): Promise<void> {

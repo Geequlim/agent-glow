@@ -77,6 +77,7 @@ describe('daemon configuration transactions', () => {
 			effect: 'static',
 			hardwareIntensity: 0.8,
 			intensity: 0.6,
+			minimumVisibleMs: 500,
 		};
 
 		expect(await request(first.socketPath, 'config.validate', { config: candidate })).toEqual({
@@ -96,8 +97,11 @@ describe('daemon configuration transactions', () => {
 		expect(firstUpdatedFrame.color.green).toBeCloseTo(before.color.green);
 		expect(firstUpdatedFrame.color.blue).toBeCloseTo(before.color.blue);
 
-		await delay(350);
-		expect(backend.visualCommits.at(-1)?.color).toEqual({ red: 255, green: 0, blue: 0 });
+		await delay(450);
+		const completedColor = backend.visualCommits.at(-1)?.color;
+		expect(completedColor?.red).toBeCloseTo(255, 1);
+		expect(completedColor?.green).toBeCloseTo(0, 1);
+		expect(completedColor?.blue).toBeCloseTo(0, 1);
 		await first.close();
 
 		const restartedBackend = new ConfigurableBackend(['configurable:light-1']);
@@ -204,6 +208,7 @@ describe('daemon configuration transactions', () => {
 			effect: 'static',
 			hardwareIntensity: 1,
 			intensity: 1,
+			minimumVisibleMs: 500,
 		};
 
 		await expect(

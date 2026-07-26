@@ -279,7 +279,7 @@ async function finishSession(sessionId) {
   completedSessions.add(sessionId)
   activeToolCalls.delete(sessionId)
   if (!childSessions.has(sessionId))
-    await emit(sessionId, "success", "pulse", 1500)
+    await emit(sessionId, "success", "pulse")
   await clear(sessionId, "tool_use")
   await clear(sessionId, "working")
 }
@@ -304,7 +304,7 @@ export const AgentGlowPlugin = async () => ({
     else if (event.type === "session.error") {
       completedSessions.add(sessionId)
       activeToolCalls.delete(sessionId)
-      await emit(sessionId, "error", "pulse", 2000)
+      await emit(sessionId, "error", "pulse")
       await clear(sessionId, "tool_use")
       await clear(sessionId, "working")
     } else if (event.type === "session.deleted") {

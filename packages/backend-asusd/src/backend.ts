@@ -99,6 +99,7 @@ export class AsusdLightingBackend implements LightingBackend {
 
 	readonly #transport: AsusdTransport;
 	readonly #deviceKind: AsusdDeviceKind | undefined;
+	readonly #auraModeData = new Map<string, DbusProperty>();
 	readonly #lastSlashResult = new Map<string, BackendApplyResult>();
 	readonly #lastSlashState = new Map<string, string>();
 	readonly #slashModeWritable = new Map<string, boolean>();
@@ -119,6 +120,7 @@ export class AsusdLightingBackend implements LightingBackend {
 			if (event.type === 'availability') {
 				this.#available = event.available;
 				this.#devices = undefined;
+				this.#auraModeData.clear();
 				this.#lastSlashState.clear();
 				this.#lastSlashResult.clear();
 				this.#slashModeWritable.clear();
@@ -192,6 +194,7 @@ export class AsusdLightingBackend implements LightingBackend {
 			assertAuraSnapshotProperty(propertyName, property);
 			properties[propertyName] = structuredClone(property);
 		}
+		this.#auraModeData.set(device.descriptor.id, structuredClone(properties[LED_MODE_DATA]));
 		return {
 			backendId: this.id,
 			deviceId,
@@ -211,11 +214,9 @@ export class AsusdLightingBackend implements LightingBackend {
 			return this.#applySlashState(device, visualState);
 		}
 
-		const current = await this.#transport.getProperty(
-			device.path,
-			AURA_INTERFACE,
-			LED_MODE_DATA,
-		);
+		const current =
+			this.#auraModeData.get(device.descriptor.id) ??
+			(await this.#transport.getProperty(device.path, AURA_INTERFACE, LED_MODE_DATA));
 		assertLedModeData(current);
 
 		const value = structuredClone(current.value);
@@ -224,10 +225,12 @@ export class AsusdLightingBackend implements LightingBackend {
 			scaleChannel(visualState.color.green, visualState.intensity),
 			scaleChannel(visualState.color.blue, visualState.intensity),
 		];
-		await this.#transport.setProperty(device.path, AURA_INTERFACE, LED_MODE_DATA, {
+		const property = {
 			signature: LED_MODE_DATA_SIGNATURE,
 			value,
-		});
+		} as const;
+		await this.#transport.setProperty(device.path, AURA_INTERFACE, LED_MODE_DATA, property);
+		this.#auraModeData.set(device.descriptor.id, structuredClone(property));
 
 		return {
 			requested: visualState,
@@ -278,6 +281,9 @@ export class AsusdLightingBackend implements LightingBackend {
 				propertyName,
 			);
 			assertSameProperty(restored, expected, `Aura.${propertyName}`);
+			if (propertyName === LED_MODE_DATA) {
+				this.#auraModeData.set(device.descriptor.id, structuredClone(expected));
+			}
 		}
 	}
 
