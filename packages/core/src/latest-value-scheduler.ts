@@ -22,6 +22,13 @@ export interface LatestValueSchedulerOptions<Key, Value, Result> {
 	readonly retryBaseDelayMs?: number;
 }
 
+export interface LatestValueSchedulerStats {
+	readonly active: boolean;
+	readonly consecutiveFailures: number;
+	readonly pending: boolean;
+	readonly retryScheduled: boolean;
+}
+
 interface Entry<Value> {
 	active: boolean;
 	consecutiveFailures: number;
@@ -75,6 +82,16 @@ export class LatestValueScheduler<Key, Value, Result> {
 		}
 		const entry = this.#entries.get(key);
 		if (entry) entry.lastFingerprint = undefined;
+	}
+
+	stats(key: Key): LatestValueSchedulerStats {
+		const entry = this.#entries.get(key);
+		return {
+			active: entry?.active ?? false,
+			consecutiveFailures: entry?.consecutiveFailures ?? 0,
+			pending: entry?.hasPending ?? false,
+			retryScheduled: entry?.retryTimer !== undefined,
+		};
 	}
 
 	async pause(): Promise<void> {

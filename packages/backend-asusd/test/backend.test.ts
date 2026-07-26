@@ -13,6 +13,11 @@ const initialModeData: DbusProperty = {
 	signature: '(uu(yyy)(yyy)ss)',
 	value: [0, 0, [0, 0, 0], [0, 0, 0], 'Med', 'Right'],
 };
+const initialAuraBrightness: DbusProperty = { signature: 'u', value: 2 };
+const initialAuraPower: DbusProperty = {
+	signature: '(a(ubbbb))',
+	value: [[[1, true, false, true, false]]],
+};
 const initialSlashProperties = {
 	Enabled: { signature: 'b', value: false },
 	Brightness: { signature: 'y', value: 64 },
@@ -22,11 +27,15 @@ const initialSlashProperties = {
 
 class FixtureTransport implements AsusdTransport {
 	readonly writes: DbusProperty[] = [];
+	readonly auraWriteNames: string[] = [];
 	readonly slashWrites: Array<{ readonly name: string; readonly property: DbusProperty }> = [];
 	current = structuredClone(initialModeData);
+	auraBrightness = structuredClone(initialAuraBrightness);
+	auraPower = structuredClone(initialAuraPower);
 	slash: Record<string, DbusProperty> = structuredClone(initialSlashProperties);
 	closed = false;
 	failSlashMode = false;
+	ignoreAuraWrites = false;
 	lifecycleListener: ((event: AsusdLifecycleEvent) => void) | undefined;
 	managedObjectReads = 0;
 
@@ -38,7 +47,11 @@ class FixtureTransport implements AsusdTransport {
 				interfaces: [
 					{
 						name: 'xyz.ljones.Aura',
-						properties: { LedModeData: this.current },
+						properties: {
+							Brightness: this.auraBrightness,
+							LedModeData: this.current,
+							LedPower: this.auraPower,
+						},
 					},
 					{
 						name: 'xyz.ljones.Slash',
@@ -63,6 +76,8 @@ class FixtureTransport implements AsusdTransport {
 			if (!property) throw new Error(`Unknown Slash property: ${propertyName}`);
 			return structuredClone(property);
 		}
+		if (propertyName === 'Brightness') return structuredClone(this.auraBrightness);
+		if (propertyName === 'LedPower') return structuredClone(this.auraPower);
 		return structuredClone(this.current);
 	}
 
@@ -78,6 +93,16 @@ class FixtureTransport implements AsusdTransport {
 			}
 			this.slash[propertyName] = structuredClone(property);
 			this.slashWrites.push({ name: propertyName, property: structuredClone(property) });
+			return;
+		}
+		if (this.ignoreAuraWrites) return;
+		this.auraWriteNames.push(propertyName);
+		if (propertyName === 'Brightness') {
+			this.auraBrightness = structuredClone(property);
+			return;
+		}
+		if (propertyName === 'LedPower') {
+			this.auraPower = structuredClone(property);
 			return;
 		}
 		this.current = structuredClone(property);
@@ -130,12 +155,43 @@ describe('AsusdLightingBackend', () => {
 			intensity: 0.5,
 			semanticState: 'working',
 		});
+		transport.auraBrightness = { signature: 'u', value: 3 };
+		transport.auraPower = {
+			signature: '(a(ubbbb))',
+			value: [[[1, true, true, true, false]]],
+		};
 
 		expect(transport.current.value).toEqual([0, 0, [32, 16, 8], [0, 0, 0], 'Med', 'Right']);
 
 		await backend.restoreSnapshot(snapshot);
 
 		expect(transport.current).toEqual(initialModeData);
+		expect(transport.auraBrightness).toEqual(initialAuraBrightness);
+		expect(transport.auraPower).toEqual(initialAuraPower);
+		expect(transport.auraWriteNames.slice(-3)).toEqual([
+			'LedModeData',
+			'Brightness',
+			'LedPower',
+		]);
+	});
+
+	it('rejects an Aura restoration that the service did not apply', async () => {
+		const transport = new FixtureTransport();
+		const backend = new AsusdLightingBackend(transport);
+		const device = (await backend.discoverDevices()).find((item) =>
+			item.id.startsWith('asusd:aura-'),
+		);
+		if (!device) throw new Error('Fixture device missing');
+		const snapshot = await backend.captureSnapshot(device.id);
+		transport.current = {
+			...structuredClone(initialModeData),
+			value: [0, 0, [32, 16, 8], [0, 0, 0], 'Med', 'Right'],
+		};
+		transport.ignoreAuraWrites = true;
+
+		await expect(backend.restoreSnapshot(snapshot)).rejects.toThrow(
+			'Aura.LedModeData restore verification failed',
+		);
 	});
 
 	it('maps semantic states to Slash firmware effects and restores all properties', async () => {

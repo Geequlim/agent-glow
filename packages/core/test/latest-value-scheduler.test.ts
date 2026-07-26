@@ -58,6 +58,10 @@ describe('LatestValueScheduler', () => {
 		scheduler.submit('device-1', 3);
 		await tick();
 		expect(commits).toEqual([1]);
+		expect(scheduler.stats('device-1')).toMatchObject({
+			active: true,
+			pending: true,
+		});
 		gates.shift()?.();
 		await tick();
 		expect(commits).toEqual([1, 3]);
@@ -65,6 +69,12 @@ describe('LatestValueScheduler', () => {
 		await scheduler.flush();
 
 		expect(maximumActive).toBe(1);
+		expect(scheduler.stats('device-1')).toEqual({
+			active: false,
+			consecutiveFailures: 0,
+			pending: false,
+			retryScheduled: false,
+		});
 	});
 
 	it('deduplicates equal successful values', async () => {

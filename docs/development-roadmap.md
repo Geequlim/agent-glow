@@ -245,7 +245,7 @@ P3 已完成，并统一标记内部开发版本 `0.1.0-dev`，用于日常真�
    - 监听 asusd D-Bus 名称所有者变化，重新发现设备并恢复当前逻辑目标。
    - 处理睡眠、唤醒和 daemon 停止恢复。
 5. **P4-E：真实硬件验收**
-   - [ ] 待执行。
+   - [x] 已完成。
    - 先跑 10 分钟 Aura 软件呼吸，再验证快速重定向和完整状态序列。
    - 手动重启 asusd 验证重新发现；最后验证两个真实 CLI session 的仲裁。
 
@@ -265,11 +265,19 @@ P3 已完成，并统一标记内部开发版本 `0.1.0-dev`，用于日常真�
 
 ### 7.3 硬件验收
 
-- 10 Hz 软件呼吸连续运行 10 分钟，无 D-Bus 请求堆积。
-- 快速连续改变目标颜色时无明显跳变。
-- `working → waiting_permission → working → success → idle` 连续平滑。
-- 重启 asusd 后 daemon 能重新发现设备并恢复当前逻辑目标。
-- 两个真实 CLI session 的优先级和清理行为正确。
+- [x] 10 Hz 软件呼吸连续运行 10 分钟，无 D-Bus 请求堆积。
+- [x] 快速连续改变目标颜色时无写入失败或目标积压。
+- [x] `working → waiting_permission → working → success → working → idle` 连续执行。
+- [x] 重启 asusd 后 daemon 能重新发现设备并恢复当前逻辑目标。
+- [x] 两个真实 CLI session 的优先级和清理行为正确。
+
+2026-07-26 的 Aura 实测完成 20 次 30 秒 heartbeat 与 diagnostics 采样，
+`consecutiveFailures=0`、`retryScheduled=false`，采样时等待区始终为空。asusd
+重启时出现一次预期的连接断开写失败，随后依次观察到 unavailable、service-restored、
+设备重新发现和 working 目标恢复，没有进入第二次退避。P4 后的 Slash 六状态回归及
+完整快照恢复同样通过。
+
+P4 已完成。后续进入 P5 持久配置与 systemd 用户服务。
 
 ## 8. P5：持久配置与 systemd 用户服务
 

@@ -14,6 +14,7 @@ develop:
     - name: typecheck
       description: 执行 TypeScript 类型检查
       command:
+        - yarn tsc -p tsconfig.json
         - yarn tsc -p scripts/tsconfig.json
         - yarn --cwd packages/protocol tsc --noEmit
         - yarn --cwd packages/core tsc --noEmit
@@ -59,6 +60,17 @@ develop:
               command:
                 - yarn tiny build
                 - AGENT_GLOW_HARDWARE_TEST=1 node scripts/smoke-asusd-effects.mts --device=slash --confirm-write
+            - name: p4
+              description: 执行 Aura 十分钟耐久、重定向、状态序列和双会话验收
+              command:
+                - yarn tiny build
+                - AGENT_GLOW_HARDWARE_TEST=1 node scripts/validate-p4-hardware.mts --confirm-write
+              actions:
+                - name: restart
+                  description: 等待人工重启 asusd 并验证自动恢复
+                  command:
+                    - yarn tiny build
+                    - AGENT_GLOW_HARDWARE_TEST=1 node scripts/validate-p4-hardware.mts --duration-ms=0 --wait-for-restart --confirm-write
     - name: probe
       description: 输出本机 P0 依赖环境
       command: node scripts/probes/environment.mts

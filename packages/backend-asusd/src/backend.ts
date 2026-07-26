@@ -20,8 +20,12 @@ import type { AsusdTransport, DbusProperty, ManagedObject } from './transport.js
 
 const AURA_INTERFACE = 'xyz.ljones.Aura';
 const SLASH_INTERFACE = 'xyz.ljones.Slash';
+const AURA_BRIGHTNESS = 'Brightness';
 const LED_MODE_DATA = 'LedModeData';
+const LED_POWER = 'LedPower';
 const LED_MODE_DATA_SIGNATURE = '(uu(yyy)(yyy)ss)';
+const LED_POWER_SIGNATURE = '(a(ubbbb))';
+const AURA_SNAPSHOT_PROPERTIES = [LED_MODE_DATA, AURA_BRIGHTNESS, LED_POWER] as const;
 const SLASH_PROPERTIES = ['Enabled', 'Brightness', 'Interval', 'Mode'] as const;
 
 interface AuraDevice {
@@ -41,7 +45,7 @@ export type AsusdDeviceKind = AsusdDevice['kind'];
 
 interface AuraSnapshotValue {
 	readonly interfaceName: typeof AURA_INTERFACE;
-	readonly property: DbusProperty;
+	readonly properties: Readonly<Record<(typeof AURA_SNAPSHOT_PROPERTIES)[number], DbusProperty>>;
 }
 
 interface SlashSnapshotValue {
@@ -177,18 +181,22 @@ export class AsusdLightingBackend implements LightingBackend {
 			};
 		}
 
-		const property = await this.#transport.getProperty(
-			device.path,
-			AURA_INTERFACE,
-			LED_MODE_DATA,
-		);
-		assertLedModeData(property);
+		const properties = {} as Record<(typeof AURA_SNAPSHOT_PROPERTIES)[number], DbusProperty>;
+		for (const propertyName of AURA_SNAPSHOT_PROPERTIES) {
+			const property = await this.#transport.getProperty(
+				device.path,
+				AURA_INTERFACE,
+				propertyName,
+			);
+			assertAuraSnapshotProperty(propertyName, property);
+			properties[propertyName] = structuredClone(property);
+		}
 		return {
 			backendId: this.id,
 			deviceId,
 			value: {
 				interfaceName: AURA_INTERFACE,
-				property: structuredClone(property),
+				properties,
 			} satisfies AuraSnapshotValue,
 		};
 	}
@@ -255,12 +263,21 @@ export class AsusdLightingBackend implements LightingBackend {
 		}
 
 		const value = readAuraSnapshot(snapshot.value);
-		await this.#transport.setProperty(
-			device.path,
-			value.interfaceName,
-			LED_MODE_DATA,
-			value.property,
-		);
+		for (const propertyName of AURA_SNAPSHOT_PROPERTIES) {
+			const expected = value.properties[propertyName];
+			await this.#transport.setProperty(
+				device.path,
+				value.interfaceName,
+				propertyName,
+				expected,
+			);
+			const restored = await this.#transport.getProperty(
+				device.path,
+				value.interfaceName,
+				propertyName,
+			);
+			assertSameProperty(restored, expected, `Aura.${propertyName}`);
+		}
 	}
 
 	async close(): Promise<void> {
@@ -505,17 +522,50 @@ function readAuraSnapshot(value: unknown): AuraSnapshotValue {
 		typeof value !== 'object' ||
 		!('interfaceName' in value) ||
 		value.interfaceName !== AURA_INTERFACE ||
-		!('property' in value) ||
-		!value.property ||
-		typeof value.property !== 'object' ||
-		!('signature' in value.property) ||
-		!('value' in value.property)
+		!('properties' in value) ||
+		!value.properties ||
+		typeof value.properties !== 'object'
 	) {
 		throw new Error('Invalid Aura snapshot');
 	}
-	const property = value.property as DbusProperty;
-	assertLedModeData(property);
-	return { interfaceName: AURA_INTERFACE, property };
+	const properties = value.properties as Record<string, DbusProperty>;
+	for (const propertyName of AURA_SNAPSHOT_PROPERTIES) {
+		const property = properties[propertyName];
+		if (!property) throw new Error(`Aura snapshot is missing ${propertyName}`);
+		assertAuraSnapshotProperty(propertyName, property);
+	}
+	return {
+		interfaceName: AURA_INTERFACE,
+		properties: properties as AuraSnapshotValue['properties'],
+	};
+}
+
+function assertAuraSnapshotProperty(
+	propertyName: (typeof AURA_SNAPSHOT_PROPERTIES)[number],
+	property: DbusProperty,
+): void {
+	if (propertyName === LED_MODE_DATA) {
+		assertLedModeData(property);
+		return;
+	}
+	if (
+		propertyName === AURA_BRIGHTNESS
+			? property.signature !== 'u' ||
+				!Number.isInteger(property.value) ||
+				(property.value as number) < 0
+			: property.signature !== LED_POWER_SIGNATURE || !Array.isArray(property.value)
+	) {
+		throw new Error(`Aura.${propertyName} has an unsupported value`);
+	}
+}
+
+function assertSameProperty(actual: DbusProperty, expected: DbusProperty, name: string): void {
+	if (
+		actual.signature !== expected.signature ||
+		JSON.stringify(actual.value) !== JSON.stringify(expected.value)
+	) {
+		throw new Error(`${name} restore verification failed`);
+	}
 }
 
 function assertSlashProperty(

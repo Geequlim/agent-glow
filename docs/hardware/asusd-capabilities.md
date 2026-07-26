@@ -112,10 +112,31 @@ Phantom → Bounce → Loading → Buzzer → Slash → Hazard
 → 恢复 Enabled / Brightness / Interval / Mode
 ```
 
-六种状态各展示 5 秒，日志逐项输出模式、亮度和间隔；测试无降级或 D-Bus
-错误，退出码为 0。
+六种状态各展示 5 秒，日志逐项输出模式、亮度和间隔；除 Slash 不支持颜色的预期
+能力降级外，没有 D-Bus 错误，退出码为 0。
 
-## 6. 归一化 fixture
+## 6. P4 长时间运行与恢复验证
+
+`yarn tiny smoke/hardware/p4` 在 Aura 上执行 10 分钟、10 Hz 的 working 呼吸。
+2026-07-26 的正式验收完成 20 次 diagnostics 采样，所有采样均满足：
+
+```text
+backend.health = healthy
+device.status = ok
+delivery.consecutiveFailures = 0
+delivery.retryScheduled = false
+delivery.pending = false
+```
+
+同一次验收还完成 75 ms 快速重定向、完整语义序列和两个 CLI session 的优先级
+恢复。执行 `sudo systemctl restart asusd.service` 后，daemon 观察到服务消失，
+暂停提交，并在服务恢复后重新发现 Aura、捕获新快照和恢复 working 逻辑目标。重启
+窗口只有一次预期的 `NoReply`，没有进入第二次退避。
+
+P4 后再次运行 Slash 六状态冒烟测试，六种固件动画均切换成功，退出时
+`Enabled`、`Brightness`、`Interval` 和 `Mode` 完整恢复。
+
+## 7. 归一化 fixture
 
 实测属性保存在：
 

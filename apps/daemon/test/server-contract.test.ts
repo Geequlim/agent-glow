@@ -10,11 +10,21 @@ import type { DeviceDescriptor } from '@agent-glow/protocol/device';
 import type { DeviceConfigurationValues } from '@agent-glow/protocol/device-configuration';
 import { describe, expect, it, vi } from 'vitest';
 
-import { restoreBackendSnapshots } from '../src/server.js';
+import { reconcileBackendSnapshots, restoreBackendSnapshots } from '../src/server.js';
+
+interface FixtureProperty {
+	readonly signature: string;
+	readonly value: unknown;
+}
 
 const initialAuraValue = {
 	signature: '(uu(yyy)(yyy)ss)',
 	value: [0, 0, [1, 2, 3], [0, 0, 0], 'Med', 'Right'],
+};
+const initialAuraBrightness = { signature: 'u', value: 2 };
+const initialAuraPower = {
+	signature: '(a(ubbbb))',
+	value: [[[1, true, false, true, false]]],
 };
 const idleState: StaticVisualState = {
 	color: { red: 64, green: 32, blue: 96 },
@@ -30,7 +40,9 @@ const workingState: StaticVisualState = {
 };
 
 class AuraFixtureTransport {
-	current = structuredClone(initialAuraValue);
+	current: FixtureProperty = structuredClone(initialAuraValue);
+	brightness: FixtureProperty = structuredClone(initialAuraBrightness);
+	power: FixtureProperty = structuredClone(initialAuraPower);
 	closed = false;
 
 	async readManagedObjects() {
@@ -40,7 +52,11 @@ class AuraFixtureTransport {
 				interfaces: [
 					{
 						name: 'xyz.ljones.Aura',
-						properties: { LedModeData: this.current },
+						properties: {
+							Brightness: this.brightness,
+							LedModeData: this.current,
+							LedPower: this.power,
+						},
 					},
 				],
 			},
@@ -51,16 +67,26 @@ class AuraFixtureTransport {
 		return undefined;
 	}
 
-	async getProperty() {
+	async getProperty(_path: string, _interfaceName: string, propertyName: string) {
+		if (propertyName === 'Brightness') return structuredClone(this.brightness);
+		if (propertyName === 'LedPower') return structuredClone(this.power);
 		return structuredClone(this.current);
 	}
 
 	async setProperty(
 		_path: string,
 		_interfaceName: string,
-		_propertyName: string,
-		property: typeof initialAuraValue,
+		propertyName: string,
+		property: FixtureProperty,
 	): Promise<void> {
+		if (propertyName === 'Brightness') {
+			this.brightness = structuredClone(property);
+			return;
+		}
+		if (propertyName === 'LedPower') {
+			this.power = structuredClone(property);
+			return;
+		}
 		this.current = structuredClone(property);
 	}
 
@@ -105,6 +131,33 @@ describe('daemon backend contract', () => {
 			errorLog.mockRestore();
 			warningLog.mockRestore();
 		}
+	});
+
+	it('preserves the startup snapshot when a backend service is rediscovered', async () => {
+		const transport = new AuraFixtureTransport();
+		const backend = new AsusdLightingBackend(transport);
+		const devices = await backend.discoverDevices();
+		const deviceId = devices[0]?.id;
+		if (!deviceId) throw new Error('Fixture device missing');
+		const startupSnapshots = [await backend.captureSnapshot(deviceId)];
+
+		await backend.applyVisualState(deviceId, workingState);
+		transport.brightness = { signature: 'u', value: 3 };
+		transport.power = {
+			signature: '(a(ubbbb))',
+			value: [[[1, true, true, true, false]]],
+		};
+		const refreshedSnapshots = await reconcileBackendSnapshots(
+			backend,
+			startupSnapshots,
+			await backend.discoverDevices(),
+		);
+		await restoreBackendSnapshots(backend, refreshedSnapshots);
+
+		expect(refreshedSnapshots).toEqual(startupSnapshots);
+		expect(transport.current).toEqual(initialAuraValue);
+		expect(transport.brightness).toEqual(initialAuraBrightness);
+		expect(transport.power).toEqual(initialAuraPower);
 	});
 });
 

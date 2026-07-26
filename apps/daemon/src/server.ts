@@ -161,6 +161,7 @@ export async function startDaemonServer(
 					backend: { id: backend.id, health: backend.getHealth() },
 					devices: devices.map((device) => ({
 						deviceId: device.id,
+						delivery: scheduler.stats(device.id),
 						...(deviceDiagnostics.get(device.id) ?? { status: 'unknown' }),
 					})),
 				};
@@ -257,8 +258,9 @@ export async function startDaemonServer(
 	}
 
 	async function refreshDevices(reason: string): Promise<void> {
-		devices = await backend.discoverDevices();
-		snapshots = await Promise.all(devices.map((device) => backend.captureSnapshot(device.id)));
+		const refreshedDevices = await backend.discoverDevices();
+		snapshots = await reconcileBackendSnapshots(backend, snapshots, refreshedDevices);
+		devices = refreshedDevices;
 		scheduler.invalidate();
 		lifecyclePaused = false;
 		scheduler.resume();
@@ -325,6 +327,21 @@ export async function startDaemonServer(
 			if (errors.length > 0) throw new AggregateError(errors, 'Daemon shutdown failed');
 		},
 	};
+}
+
+export async function reconcileBackendSnapshots(
+	backend: LightingBackend,
+	snapshots: readonly BackendSnapshot[],
+	devices: readonly DeviceDescriptor[],
+): Promise<readonly BackendSnapshot[]> {
+	const existingByDevice = new Map(
+		snapshots.map((snapshot) => [snapshot.deviceId, snapshot] as const),
+	);
+	return Promise.all(
+		devices.map(
+			(device) => existingByDevice.get(device.id) ?? backend.captureSnapshot(device.id),
+		),
+	);
 }
 
 export async function restoreBackendSnapshots(
