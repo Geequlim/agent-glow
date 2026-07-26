@@ -29,7 +29,7 @@ if (process.argv.includes('--window')) {
 			application,
 			defaultWidth: 420,
 			defaultHeight: 180,
-			title: 'AgentGlow GTK Probe',
+			title: 'Agent Glow GTK Probe',
 			content: new Gtk.Label({
 				label: 'Node.js 24 + GTK4 + libadwaita 已成功加载',
 			}),

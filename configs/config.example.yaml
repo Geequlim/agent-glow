@@ -3,7 +3,7 @@ version: 1
 daemon:
     frameRate: 15
     powerSavingMode: true
-    retainedStateTimeoutMs: 600000
+    retainedStateTimeoutMs: 120000
     staleSessionTimeoutMs: 300000
 
 rendering:

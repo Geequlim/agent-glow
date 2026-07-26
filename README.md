@@ -1,4 +1,4 @@
-# AgentGlow
+# Agent Glow
 
 面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成。首个生产 backend 通过 `asusd` 支持 ROG Aura 与 Slash，后续可以接入外置 RGB 灯等其他设备。
 
@@ -233,6 +233,6 @@ GObject Introspection 和 Cairo。`asusctl` 是 AUR 可选依赖，由运行时�
 
 作者：Geequlim
 
-AgentGlow 与 VoxSpell 一致，采用
+Agent Glow 与 VoxSpell 一致，采用
 [PolyForm Noncommercial License 1.0.0](LICENSE)，允许非商业用途，禁止商业使用。
 必需版权声明见 [NOTICE](NOTICE)。

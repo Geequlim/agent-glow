@@ -39,6 +39,7 @@ const ZCODE_EVENTS = [
 	'Stop',
 ] as const;
 const MARKER = 'AgentGlow integration';
+const STATUS_MESSAGE = 'Agent Glow integration';
 
 export class IntegrationManager {
 	readonly #codexHooksPath: string;
@@ -111,7 +112,7 @@ export class IntegrationManager {
 					: this.#zcodeConfigPath;
 		const before = (await readOptional(targetPath)) ?? '';
 		if (id === 'opencode' && before && !before.includes(MARKER)) {
-			throw new Error('目标文件不是 AgentGlow 生成的 OpenCode 插件，拒绝覆盖或删除。');
+			throw new Error('目标文件不是 Agent Glow 生成的 OpenCode 插件，拒绝覆盖或删除。');
 		}
 		const after =
 			id === 'codex'
@@ -179,7 +180,7 @@ export function updateZcodeHooks(
 						command: nodePath,
 						args: [cliPath, 'adapt', 'zcode'],
 						timeoutMs: 2000,
-						statusMessage: MARKER,
+						statusMessage: STATUS_MESSAGE,
 					},
 				],
 			});
@@ -215,7 +216,7 @@ export function updateCodexHooks(
 						type: 'command',
 						command,
 						timeout: event === 'SessionEnd' ? 1 : 2,
-						statusMessage: MARKER,
+						statusMessage: STATUS_MESSAGE,
 					},
 				],
 			});
@@ -358,7 +359,9 @@ function containsAgentGlowHandler(value: unknown, command: string): boolean {
 				handler &&
 				typeof handler === 'object' &&
 				((Boolean(command) && 'command' in handler && handler.command === command) ||
-					('statusMessage' in handler && handler.statusMessage === MARKER)),
+					('statusMessage' in handler &&
+						(handler.statusMessage === MARKER ||
+							handler.statusMessage === STATUS_MESSAGE))),
 		)
 	);
 }

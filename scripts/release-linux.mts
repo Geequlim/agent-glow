@@ -377,7 +377,7 @@ async function publishGithubRelease(tag: string, assetPaths: readonly string[]):
 		'--verify-tag',
 		'--generate-notes',
 		'--title',
-		`AgentGlow ${tag.slice(1)}`,
+		`Agent Glow ${tag.slice(1)}`,
 		'--repo',
 		GITHUB_REPOSITORY,
 	]);

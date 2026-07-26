@@ -38,7 +38,7 @@ export function validateConfigValue(value: unknown): AgentGlowConfig {
 	if (!Value.Check(AgentGlowConfigSchema, value)) {
 		const firstError = [...Value.Errors(AgentGlowConfigSchema, value)][0];
 		throw new ConfigValidationError(
-			`Invalid AgentGlow configuration${
+			`Invalid Agent Glow configuration${
 				firstError ? ` at ${firstError.path || '/'}: ${firstError.message}` : ''
 			}`,
 		);
@@ -46,7 +46,7 @@ export function validateConfigValue(value: unknown): AgentGlowConfig {
 	for (const [state, profile] of Object.entries(value.profiles)) {
 		if (profile.effect !== 'static' && profile.minimumIntensity > profile.maximumIntensity) {
 			throw new ConfigValidationError(
-				`Invalid AgentGlow configuration at /profiles/${state}: minimumIntensity must not exceed maximumIntensity`,
+				`Invalid Agent Glow configuration at /profiles/${state}: minimumIntensity must not exceed maximumIntensity`,
 			);
 		}
 	}
@@ -58,6 +58,6 @@ export function migrateConfig(value: unknown): unknown {
 		value && typeof value === 'object' && 'version' in value ? value.version : undefined;
 	if (version === 1) return value;
 	throw new ConfigValidationError(
-		`Unsupported AgentGlow configuration version: ${String(version)}`,
+		`Unsupported Agent Glow configuration version: ${String(version)}`,
 	);
 }

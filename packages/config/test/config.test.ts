@@ -15,6 +15,7 @@ describe('configuration contract', () => {
 	it('round-trips the default configuration through YAML', () => {
 		const config = createDefaultConfig();
 
+		expect(config.daemon.retainedStateTimeoutMs).toBe(120_000);
 		expect(parseConfigYaml(stringifyConfigYaml(config))).toEqual(config);
 	});
 
@@ -49,7 +50,7 @@ describe('configuration contract', () => {
 			'version: 2',
 		);
 		expect(() => parseConfigYaml(unknownVersion)).toThrow(
-			'Unsupported AgentGlow configuration version: 2',
+			'Unsupported Agent Glow configuration version: 2',
 		);
 	});
 

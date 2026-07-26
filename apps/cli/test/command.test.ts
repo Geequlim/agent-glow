@@ -9,7 +9,7 @@ describe('runCli', () => {
 		const output = createOutput();
 
 		expect(await runCli([], '1.2.3', output, unusedRequest)).toBe(0);
-		expect(output.stdout.join('')).toContain('AgentGlow CLI');
+		expect(output.stdout.join('')).toContain('Agent Glow CLI');
 		expect(output.stderr).toEqual([]);
 	});
 

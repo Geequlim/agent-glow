@@ -5,7 +5,7 @@ export const DEFAULT_AGENT_GLOW_CONFIG = {
 	daemon: {
 		frameRate: 15,
 		powerSavingMode: true,
-		retainedStateTimeoutMs: 10 * 60 * 1000,
+		retainedStateTimeoutMs: 120 * 1000,
 		staleSessionTimeoutMs: 300_000,
 	},
 	rendering: {

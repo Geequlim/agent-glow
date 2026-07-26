@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=AgentGlow
+Name=Agent Glow
 GenericName=Agent Lighting
 Comment=Display Agent activity through hardware lighting
 Exec=agent-glow-desktop

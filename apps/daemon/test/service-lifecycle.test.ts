@@ -146,6 +146,41 @@ describe('P5 service lifecycle', () => {
 		await daemon.close();
 	});
 
+	it('does not redisplay an unchanged state for repeated concurrent events', async () => {
+		const backend = new LifecycleBackend(true);
+		const daemon = await startTestDaemon(backend, undefined, 0);
+		const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+		const event = {
+			version: 1,
+			source: 'opencode',
+			sessionId: 'repeated-tools',
+			state: 'tool_use',
+			phase: 'enter',
+		} as const;
+
+		await Promise.all(
+			Array.from({ length: 8 }, () => request(daemon.socketPath, 'event.emit', { event })),
+		);
+
+		expect(
+			log.mock.calls.filter(([message]) =>
+				String(message).includes('displaying state=tool_use'),
+			),
+		).toHaveLength(1);
+
+		await request(daemon.socketPath, 'event.clear', {
+			source: event.source,
+			sessionId: event.sessionId,
+			state: 'working',
+		});
+		expect(
+			log.mock.calls.filter(([message]) =>
+				String(message).includes('displaying state=tool_use'),
+			),
+		).toHaveLength(1);
+		await daemon.close();
+	});
+
 	it('protects the current visual state and skips superseded pending states', async () => {
 		const backend = new LifecycleBackend(true);
 		const daemon = await startTestDaemon(backend, undefined, 40);

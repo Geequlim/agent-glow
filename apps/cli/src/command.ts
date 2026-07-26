@@ -34,7 +34,7 @@ export async function runCli(
 	let commandExitCode = 0;
 	const program = new Command()
 		.name('agent-glow')
-		.description('AgentGlow CLI')
+		.description('Agent Glow CLI')
 		.version(version)
 		.exitOverride()
 		.showHelpAfterError()

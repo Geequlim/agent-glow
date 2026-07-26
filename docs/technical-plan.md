@@ -226,9 +226,9 @@ type SemanticState =
 | `working`            | 蓝紫色缓慢呼吸             | 持续状态           |
 | `tool_use`           | 青蓝色较快呼吸             | 工具调用期间       |
 | `waiting_permission` | 琥珀色较快呼吸             | 持续到授权或取消   |
-| `success`            | 绿色双脉冲后低亮蓝色保持   | 最长默认 10 分钟   |
-| `error`              | 红色双脉冲后低亮保持       | 最长默认 10 分钟   |
-| `paused`             | 暖白低亮度静态             | 最长默认 10 分钟   |
+| `success`            | 绿色双脉冲后低亮蓝色保持   | 最长默认 120 秒    |
+| `error`              | 红色双脉冲后低亮保持       | 最长默认 120 秒    |
+| `paused`             | 暖白低亮度静态             | 最长默认 120 秒    |
 
 主动状态的默认效果只是默认参数，用户可在 UI 中修改；基础状态不提供主题配置。
 
@@ -443,7 +443,7 @@ version: 1
 daemon:
     frameRate: 15
     powerSavingMode: true
-    retainedStateTimeoutMs: 600000
+    retainedStateTimeoutMs: 120000
     staleSessionTimeoutMs: 300000
 
 rendering:
@@ -528,7 +528,7 @@ devices:
 `retainedStateTimeoutMs` 是成功、失败和暂停状态的统一最长保持时间。成功与失败的
 一次性动画结束后保持最低亮度帧，暂停保持其静态效果；新的非空闲事件会清理旧的保持
 状态，超时且没有新活动时恢复系统灯光。该上限不替代各 profile 的
-`minimumVisibleMs`。
+`minimumVisibleMs`。配置文件内部使用毫秒，桌面界面以秒展示和编辑，默认 120 秒。
 
 ## 10. 配置界面
 

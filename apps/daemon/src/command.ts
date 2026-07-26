@@ -13,7 +13,7 @@ export function runDaemonCli(
 ): number {
 	const program = new Command()
 		.name('agent-glow-daemon')
-		.description('AgentGlow daemon')
+		.description('Agent Glow daemon')
 		.version(version)
 		.exitOverride()
 		.showHelpAfterError()

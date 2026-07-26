@@ -38,7 +38,7 @@ async function manageDevelopmentService(action: 'install' | 'remove'): Promise<v
 	const loadState = await readSystemctlProperty('LoadState');
 	if (loadState === 'loaded') {
 		await runSystemctl(['disable', '--now', 'agent-glow.service']);
-		console.log('[agent-glow] stopped and disabled AgentGlow service');
+		console.log('[agent-glow] stopped and disabled Agent Glow service');
 	}
 	await unlink(unitPath).catch((error: unknown) => {
 		if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
@@ -50,7 +50,7 @@ async function manageDevelopmentService(action: 'install' | 'remove'): Promise<v
 
 function createDevelopmentUnit(nodePath: string, daemonBundle: string): string {
 	return `[Unit]
-Description=AgentGlow lighting state daemon (development)
+Description=Agent Glow lighting state daemon (development)
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=30s

@@ -1,5 +1,5 @@
 [Unit]
-Description=AgentGlow lighting state daemon
+Description=Agent Glow lighting state daemon
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=30s

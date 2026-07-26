@@ -67,7 +67,7 @@ const PREVIEW_TTL_MS = 15_000;
 const DEVICE_ENABLED_SETTING = {
 	key: 'enabled',
 	label: '启用设备',
-	description: '关闭后 AgentGlow 不再控制此设备。',
+	description: '关闭后 Agent Glow 不再控制此设备。',
 	kind: 'boolean',
 	defaultValue: true,
 } as const;
@@ -112,6 +112,12 @@ export async function startDaemonServer(
 	let previewTimer: NodeJS.Timeout | undefined;
 	let previewState: Exclude<ReturnType<LeaseArbiter['currentState']>, 'idle'> | undefined;
 	let stateSyncPending = false;
+	let displayInFlight:
+		| {
+				readonly state: ReturnType<LeaseArbiter['currentState']>;
+				readonly promise: Promise<void>;
+		  }
+		| undefined;
 	let closing = false;
 	let closePromise: Promise<void> | undefined;
 	let devices: readonly DeviceDescriptor[] = [];
@@ -489,9 +495,23 @@ export async function startDaemonServer(
 		return result;
 	}
 
-	async function displayState(
+	function displayState(
 		state: ReturnType<LeaseArbiter['currentState']>,
 		restart = false,
+	): Promise<void> {
+		if (!restart && state === displayedState) return Promise.resolve();
+		if (!restart && displayInFlight?.state === state) return displayInFlight.promise;
+
+		const promise = applyDisplayState(state, restart);
+		displayInFlight = { state, promise };
+		return promise.finally(() => {
+			if (displayInFlight?.promise === promise) displayInFlight = undefined;
+		});
+	}
+
+	async function applyDisplayState(
+		state: ReturnType<LeaseArbiter['currentState']>,
+		restart: boolean,
 	): Promise<void> {
 		if (powerSavingActive) return;
 		if (state === 'idle') {

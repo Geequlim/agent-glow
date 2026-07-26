@@ -34,7 +34,7 @@ if (action === 'remove') {
 function createDesktopEntry(nodePath: string, bundlePath: string, applicationIcon: string): string {
 	return `[Desktop Entry]
 Type=Application
-Name=AgentGlow
+Name=Agent Glow
 Comment=Display Agent activity through hardware lighting
 Exec=${quoteDesktopArgument(nodePath)} --enable-source-maps ${quoteDesktopArgument(bundlePath)}
 Icon=${applicationIcon}

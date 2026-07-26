@@ -120,7 +120,7 @@ develop:
         - yarn tiny test
         - yarn tiny smoke
     - name: service
-      description: 管理 AgentGlow systemd 用户服务
+      description: 管理 Agent Glow systemd 用户服务
       actions:
         - name: install
           description: 安装开发 unit 并重新加载 systemd（不启用、不启动）
@@ -128,7 +128,7 @@ develop:
             - yarn tiny build
             - node scripts/manage-dev-service.mts install
         - name: start
-          description: 强制重启当前 AgentGlow 用户服务并只监听本次启动日志
+          description: 强制重启当前 Agent Glow 用户服务并只监听本次启动日志
           command:
             - systemctl --user restart agent-glow.service
             - systemctl --user show agent-glow.service --property=FragmentPath,ExecStart,MainPID --no-pager

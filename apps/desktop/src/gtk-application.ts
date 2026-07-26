@@ -15,12 +15,13 @@ import {
 	STATE_LABELS,
 	type ConfigurableState,
 } from './desktop-state.js';
-import { Adw, Gdk, Gio, Gtk } from './gtk.js';
+import { Adw, Gdk, Gio, GLib, Gtk } from './gtk.js';
 import type { IntegrationId, IntegrationPlan } from './integration-manager.js';
 import type { AgentGlowRpcClient } from './rpc-client.js';
 import { SocketAgentGlowRpcClient } from './rpc-client.js';
 
 const APPLICATION_ID = 'io.github.geequlim.AgentGlow';
+const APPLICATION_NAME = 'Agent Glow';
 const ICON_PATH = path.resolve(import.meta.dirname, '../icon.png');
 const ICON_DIRECTORY = path.resolve(import.meta.dirname, '../icons');
 
@@ -33,6 +34,7 @@ const pages = [
 ] as const;
 
 export function createGtkApplication(): DesktopApplication {
+	GLib.setApplicationName(APPLICATION_NAME);
 	const application = new Adw.Application({
 		applicationId: APPLICATION_ID,
 		flags: Gio.ApplicationFlags.DEFAULT_FLAGS,
@@ -93,7 +95,7 @@ function createMainWindow(
 	});
 	sidebar.addTopBar(
 		new Adw.HeaderBar({
-			titleWidget: new Adw.WindowTitle({ title: 'AgentGlow', subtitle: '灯光状态' }),
+			titleWidget: new Adw.WindowTitle({ title: APPLICATION_NAME, subtitle: '灯光状态' }),
 		}),
 	);
 	const banner = new Adw.Banner({ revealed: false });
@@ -103,7 +105,7 @@ function createMainWindow(
 	const content = new Adw.ToolbarView({ content: contentBox });
 	content.addTopBar(new Adw.HeaderBar({ titleWidget: title }));
 	const splitView = new Adw.NavigationSplitView({
-		sidebar: new Adw.NavigationPage({ child: sidebar, title: 'AgentGlow' }),
+		sidebar: new Adw.NavigationPage({ child: sidebar, title: APPLICATION_NAME }),
 		content: new Adw.NavigationPage({ child: content, title: '设置' }),
 		showContent: true,
 		minSidebarWidth: 220,
@@ -114,7 +116,7 @@ function createMainWindow(
 		content: splitView,
 		defaultWidth: 1040,
 		defaultHeight: 720,
-		title: 'AgentGlow',
+		title: APPLICATION_NAME,
 	});
 	disposers.push(
 		autorun(() => {
@@ -145,7 +147,7 @@ function createOverviewPage(
 	disposers: IReactionDisposer[],
 ): InstanceType<typeof Adw.PreferencesPage> {
 	const serviceRow = new Adw.SwitchRow({
-		title: '启用 AgentGlow',
+		title: `启用 ${APPLICATION_NAME}`,
 		subtitle: '同时控制后台服务与登录后自动启动。',
 	});
 	serviceRow.on('notify::active', () => {
@@ -320,16 +322,16 @@ function createStylesPage(
 	actionGroup.add(transition);
 	const retainedStateTimeout = createSpinRow(
 		'成功、失败与暂停最长保持时间',
-		'分钟',
+		'秒',
 		1,
-		1440,
+		86_400,
 		1,
 		0,
 	);
 	let syncingRetainedStateTimeout = false;
 	retainedStateTimeout.on('notify::value', () => {
 		if (!syncingRetainedStateTimeout) {
-			state.updateRetainedStateTimeout(Math.round(retainedStateTimeout.value) * 60_000);
+			state.updateRetainedStateTimeout(Math.round(retainedStateTimeout.value) * 1000);
 		}
 	});
 	actionGroup.add(retainedStateTimeout);
@@ -340,7 +342,7 @@ function createStylesPage(
 			transition.value = state.config.rendering.transitionMs;
 			syncingTransition = false;
 			syncingRetainedStateTimeout = true;
-			retainedStateTimeout.value = state.config.daemon.retainedStateTimeoutMs / 60_000;
+			retainedStateTimeout.value = state.config.daemon.retainedStateTimeoutMs / 1000;
 			syncingRetainedStateTimeout = false;
 		}),
 	);
@@ -525,7 +527,7 @@ function createDevicesPage(
 					title: '尚未发现设备',
 					description: state.service.running
 						? '等待 backend 注册设备。'
-						: '请先在概览页启用 AgentGlow。',
+						: `请先在概览页启用 ${APPLICATION_NAME}。`,
 				});
 				page.add(empty);
 				groups.push(empty);
@@ -706,7 +708,7 @@ function createAgentsPage(
 				row.subtitle = detection?.available
 					? detection.connected
 						? detection.updateAvailable
-							? '发现 AgentGlow 接入更新'
+							? `发现 ${APPLICATION_NAME} 接入更新`
 							: id === 'codex'
 								? `已写入 Hook · 请在 Codex /hooks 中检查信任状态`
 								: id === 'opencode'
@@ -826,7 +828,7 @@ function createAboutPage(): InstanceType<typeof Adw.StatusPage> {
 	group.add(project);
 	group.add(license);
 	return new Adw.StatusPage({
-		title: 'AgentGlow',
+		title: APPLICATION_NAME,
 		description: '让硬件灯光表达 Agent 的工作状态',
 		paintable: image.paintable,
 		child: new Adw.Clamp({ child: group, maximumSize: 560 }),

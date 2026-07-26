@@ -38,7 +38,7 @@ describe('updateCodexHooks', () => {
 
 		expect(parsed.description).toBe('Existing hooks');
 		expect(parsed.hooks.UserPromptSubmit).toHaveLength(2);
-		expect(twice.match(/AgentGlow integration/gu)).toHaveLength(6);
+		expect(twice.match(/Agent Glow integration/gu)).toHaveLength(6);
 	});
 
 	it('removes only AgentGlow handlers', () => {
@@ -67,7 +67,7 @@ describe('updateCodexHooks', () => {
 		const upgraded = updateCodexHooks(oldConfiguration, newCommand, 'install');
 
 		expect(upgraded).not.toContain(oldCommand);
-		expect(upgraded.match(/AgentGlow integration/gu)).toHaveLength(6);
+		expect(upgraded.match(/Agent Glow integration/gu)).toHaveLength(6);
 		expect(upgraded.match(/\/new\/agent-glow\.cjs/gu)).toHaveLength(6);
 	});
 });
@@ -96,13 +96,13 @@ describe('updateZcodeHooks', () => {
 		expect(parsed.ui).toEqual({ locale: 'zh-CN' });
 		expect(parsed.hooks.enabled).toBe(true);
 		expect(parsed.hooks.events.PreToolUse).toHaveLength(2);
-		expect(twice.match(/AgentGlow integration/gu)).toHaveLength(7);
+		expect(twice.match(/Agent Glow integration/gu)).toHaveLength(7);
 		expect(parsed.hooks.events.Stop[0].hooks[0]).toEqual({
 			type: 'process',
 			command: '/usr/bin/node',
 			args: ['/opt/agent glow/cli.cjs', 'adapt', 'zcode'],
 			timeoutMs: 2000,
-			statusMessage: 'AgentGlow integration',
+			statusMessage: 'Agent Glow integration',
 		});
 	});
 
@@ -127,7 +127,7 @@ describe('updateZcodeHooks', () => {
 		expect(removed.hooks.events.Stop).toEqual([
 			{ hooks: [{ type: 'command', command: 'other-hook' }] },
 		]);
-		expect(JSON.stringify(removed)).not.toContain('AgentGlow integration');
+		expect(JSON.stringify(removed)).not.toContain('Agent Glow integration');
 	});
 
 	it('upgrades an older AgentGlow process command without duplicating it', () => {
@@ -145,7 +145,7 @@ describe('updateZcodeHooks', () => {
 		);
 
 		expect(upgraded).not.toContain('/old/agent-glow.cjs');
-		expect(upgraded.match(/AgentGlow integration/gu)).toHaveLength(7);
+		expect(upgraded.match(/Agent Glow integration/gu)).toHaveLength(7);
 		expect(upgraded.match(/\/new\/agent-glow\.cjs/gu)).toHaveLength(7);
 	});
 });

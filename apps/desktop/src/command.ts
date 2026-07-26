@@ -13,7 +13,7 @@ export function runDesktopCli(
 ): number {
 	const program = new Command()
 		.name('agent-glow-desktop')
-		.description('AgentGlow desktop application')
+		.description('Agent Glow desktop application')
 		.version(version)
 		.exitOverride()
 		.showHelpAfterError()
