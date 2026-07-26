@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+.yarn/*
+!.yarn/releases/
+!.yarn/releases/yarn-4.17.1.cjs

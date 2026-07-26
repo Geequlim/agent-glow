@@ -1,0 +1,38 @@
+develop:
+  actions:
+    - name: test
+      description: 执行单元测试
+      command:
+        - yarn --cwd packages/protocol vitest run
+        - yarn --cwd packages/core vitest run
+    - name: typecheck
+      description: 执行 TypeScript 类型检查
+      command:
+        - yarn --cwd packages/protocol tsc --noEmit
+        - yarn --cwd packages/core tsc --noEmit
+    - name: lint
+      description: 使用 Oxlint 执行静态代码分析
+      command: yarn oxlint -c oxlint.config.mts -f stylish packages
+      actions:
+        - name: fix
+          description: 自动修复 Oxlint 问题
+          command: yarn oxlint -c oxlint.config.mts -f stylish packages --fix
+    - name: format
+      description: 使用 Oxfmt 格式化代码
+      command: yarn oxfmt packages
+      actions:
+        - name: check
+          description: 检查代码格式
+          command: yarn oxfmt --check packages
+    - name: check
+      description: 执行完整质量检查
+      command:
+        - yarn tiny typecheck
+        - yarn tiny lint
+        - yarn tiny format/check
+        - yarn tiny test
+    - name: fix-worktree
+      description: 规范化工作区
+      command:
+        - yarn tiny lint/fix
+        - yarn tiny format

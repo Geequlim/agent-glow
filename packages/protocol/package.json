@@ -1,0 +1,21 @@
+{
+	"name": "@agent-glow/protocol",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		"./semantic-state": "./src/semantic-state.ts"
+	},
+	"dependencies": {
+		"@sinclair/typebox": "0.34.52"
+	},
+	"devDependencies": {
+		"@types/node": "24.13.3",
+		"typescript": "7.0.2",
+		"vitest": "4.1.10"
+	},
+	"engines": {
+		"node": ">=24"
+	}
+}
