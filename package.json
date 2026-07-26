@@ -1,6 +1,6 @@
 {
 	"name": "agent-glow",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"private": true,
 	"description": "面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成",
 	"license": "SEE LICENSE IN LICENSE",
