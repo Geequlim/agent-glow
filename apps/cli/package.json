@@ -1,0 +1,21 @@
+{
+	"name": "@agent-glow/cli",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@agent-glow/protocol": "workspace:^",
+		"commander": "15.0.0"
+	},
+	"devDependencies": {
+		"@rspack/cli": "2.1.4",
+		"@rspack/core": "2.1.4",
+		"@types/node": "24.13.3",
+		"ts-checker-rspack-plugin": "1.5.2",
+		"typescript": "7.0.2",
+		"vitest": "4.1.10"
+	},
+	"engines": {
+		"node": ">=24"
+	}
+}

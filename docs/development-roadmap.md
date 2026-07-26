@@ -17,7 +17,7 @@ order: 2
     ↓
 事件 → daemon → fake backend 的无硬件闭环
     ↓
-接入真实 asusd，完成静态灯光闭环
+接入首个生产 backend-asusd，完成静态灯光闭环
     ↓
 补齐仲裁、动画和故障恢复
     ↓
@@ -36,7 +36,7 @@ Agent 适配器
 2. fake backend 先于真实硬件，核心逻辑不能依赖 D-Bus 才能测试。
 3. CLI 先于 Desktop，先证明协议和 daemon，再为稳定能力制作界面。
 4. Codex 适配器先单独跑通，再复用模式实现 Claude Code 和 OpenCode。
-5. 不提前实现逐键 RGB、插件 SDK、多 backend 等首版非目标。
+5. 从 P2 固化硬件无关 backend contract，但不提前实现第二个生产 backend、插件 SDK 或逐键 RGB。
 6. 当前阶段验收未通过时，不并行扩张下一阶段功能范围。
 
 ## 2. 版本与里程碑
@@ -46,7 +46,7 @@ Agent 适配器
 | P0 风险验证 | 关键依赖和外部接口有可运行探针，技术决策冻结 | 是 |
 | P1 工程基础 | monorepo、质量门禁和构建链可用 | 否 |
 | P2 无硬件闭环 | CLI 事件可经 daemon 驱动 fake backend | 否 |
-| P3 真实设备闭环 | Aura/Slash 可发现、静态控制并恢复 | 是 |
+| P3 首个生产 backend | backend-asusd 的 Aura/Slash 可发现、静态控制并恢复 | 是 |
 | P4 动画与可靠性 | 多会话仲裁、平滑动画、背压和重连可用 | 是 |
 | P5 配置与服务 | YAML 配置、RPC 更新、systemd 用户服务可用 | 是 |
 | P6 Desktop | 用户可通过 GTK 界面配置、预览和诊断 | 是 |
@@ -62,14 +62,14 @@ P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless bet
 ### 3.1 任务
 
 - [ ] 确定许可证：MPL-2.0 或 Apache-2.0，并记录选择理由。
-- [ ] 记录开发机的 Node.js、Yarn、GTK4、libadwaita、GObject Introspection、asusd 版本。
-- [ ] 用最小 TypeScript/JavaScript 探针验证 `@homebridge/dbus-native` 能连接 system D-Bus。
-- [ ] 枚举 asusd ObjectManager 对象，保存经过脱敏的 Aura/Slash 接口、属性和方法样本。
-- [ ] 验证一次 Aura 状态读取、静态颜色写入和原状态恢复。
-- [ ] 验证一次 Slash 状态读取、支持操作写入和原状态恢复。
-- [ ] 用最小 `node-gtk` 程序在 Node.js 24 下打开 GTK4/libadwaita 窗口。
+- [x] 记录开发机的 Node.js、Yarn、GTK4、libadwaita、GObject Introspection、asusd 版本。
+- [x] 用最小 TypeScript/JavaScript 探针验证 `@homebridge/dbus-native` 能连接 system D-Bus。
+- [x] 枚举 asusd ObjectManager 对象，保存经过脱敏的 Aura/Slash 接口、属性和方法样本。
+- [x] 验证一次 Aura 状态读取、静态颜色写入和原状态恢复。
+- [x] 验证一次 Slash 状态读取、支持操作写入和原状态恢复。
+- [x] 用最小 `node-gtk` 程序在 Node.js 24 下打开 GTK4/libadwaita 窗口。
 - [ ] 核对 Codex、Claude Code、OpenCode 当前真实可用的 Hook 事件、输入格式、超时行为和配置位置。
-- [ ] 决定发布包是携带固定 Node.js runtime，还是依赖系统 Node.js；记录 ABI 与包体积取舍。
+- [x] 决定发布包是携带固定 Node.js runtime，还是依赖系统 Node.js；记录 ABI 与包体积取舍。
 
 探针代码放入 `scripts/probes/`，它们只用于开发验证，不进入 daemon 生产代码。
 
@@ -90,18 +90,19 @@ P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless bet
 
 ## 4. P1：建立最小工程基础
 
-目标：得到稳定、可重复的开发和 CI 基线，但不急于创建 Desktop 或集成适配器空壳。
+目标：得到稳定、可重复的开发基线，但不急于创建 Desktop 或集成适配器空壳。
 
 ### 4.1 任务
 
-- [ ] 初始化 Node.js 24、Yarn 4、node-modules linker 和 Workspaces。
-- [ ] 首批只创建 `packages/protocol`、`packages/core`、`packages/config`、`packages/backend-asusd`、`apps/daemon`、`apps/cli`。
-- [ ] 配置共享 TypeScript 规则和 workspace 引用。
-- [ ] 配置 Vitest、Oxlint、Oxfmt。
-- [ ] 配置 Rspack，将 daemon 和 CLI 输出为可直接运行的 CJS bundle。
-- [ ] 建立 `project.tiny` 的 `build`、`test`、`typecheck`、`lint`、`format`、`smoke` 入口。
-- [ ] 建立基础 CI，使用与本地相同的命令。
-- [ ] 添加贡献说明、许可证文件和最小开发环境文档。
+- [x] 初始化 Node.js 24、Yarn 4、node-modules linker 和 Workspaces。
+- [x] 创建当前有运行价值的 `packages/protocol`、`packages/core`、`apps/daemon`、`apps/cli`。
+- [x] 建立依赖边界检查：protocol/core 不得依赖生产 backend。
+- [x] 配置共享 TypeScript 规则和 workspace 引用。
+- [x] 配置 Vitest、Oxlint、Oxfmt。
+- [x] 配置 Rspack，将 daemon 和 CLI 输出为可直接运行的 CJS bundle。
+- [x] 使用 Commander.js 统一 daemon 与 CLI 的命令行入口。
+- [x] 建立 `project.tiny` 的 `build`、`test`、`typecheck`、`lint`、`format`、`smoke` 入口。
+- [ ] 确定许可证并添加许可证文件。
 
 ### 4.2 验收门槛
 
@@ -118,16 +119,19 @@ yarn tiny smoke
 
 `smoke` 至少验证 CLI 和 daemon bundle 可由 Node.js 24 加载。此阶段不要求连接 D-Bus。
 
+MVP 阶段只维护上述本地门禁，不投入 CI、贡献流程或尚无调用方的 workspace。`packages/config`
+在需要用户配置时创建，`packages/backend-asusd` 在 P3 接入首个真实 backend 时创建。
+
 ## 5. P2：打通无硬件的端到端闭环
 
 目标：不依赖 GTK、systemd 或真实设备，证明事件模型、RPC、仲裁入口和设备抽象能够协作。
 
 ### 5.1 协议与配置
 
-- [ ] 在 `packages/protocol` 定义协议版本、语义状态、标准事件、设备能力和首批 RPC schema。
-- [ ] 为所有外部输入设置长度、数量、消息大小和并发上限。
-- [ ] 在 `packages/config` 实现 v1 默认配置、严格校验和内存加载；原子落盘延后到 P5。
-- [ ] 为 schema 添加合法、边界和未知字段 fixtures。
+- [x] 在 `packages/protocol` 定义协议版本、语义状态、标准事件、设备能力和 MVP RPC schema。
+- [x] 为所有外部输入设置长度、数量、消息大小和并发上限。
+- [ ] 第一条无硬件闭环完成后，再按实际需求建立 `packages/config`；原子落盘延后到 P5。
+- [x] 为 schema 添加合法、边界和未知字段测试。
 
 首批 RPC 只实现：
 
@@ -136,27 +140,28 @@ yarn tiny smoke
 - `device.list`
 - `event.emit`
 - `event.clear`
-- `state.listActive`
-- `diagnostics.get`
 
-不要在这一阶段实现尚无调用方的完整 Desktop RPC。
+`state.listActive`、`diagnostics.get` 和 Desktop RPC 在首个 MVP 闭环后按实际调用需求添加。
 
 ### 5.2 核心与 fake backend
 
-- [ ] 定义最小 `LightingBackend` 接口：发现、读取快照、应用视觉状态、恢复、关闭。
-- [ ] 实现内存 fake backend，记录提交历史并可模拟慢写入和失败。
-- [ ] 实现持续租约、`enter`、`leave`、`pulse`、TTL 和固定优先级仲裁。
-- [ ] 使用可注入的 monotonic clock，测试中使用虚拟时钟。
-- [ ] 此阶段只输出静态目标视觉状态，不实现逐帧动画。
+- [x] 定义硬件无关的最小 `LightingBackend` 接口：backend 健康状态、发现、通用能力、读取快照、应用视觉状态、降级结果、恢复、关闭。
+- [x] 设备 ID 使用 backend 命名空间，不能等于临时 D-Bus 对象路径。
+- [x] 实现内存 fake backend，记录提交历史。
+- [x] 实现持续租约、`enter`、`leave`、`pulse`、TTL 和固定优先级仲裁。
+- [x] 使用可注入的 monotonic clock，测试中使用虚拟时钟。
+- [x] 此阶段只输出静态目标视觉状态，不实现逐帧动画。
+
+慢写入和失败注入在开始验证背压与错误隔离时添加，不阻塞首个 MVP 闭环。
 
 ### 5.3 Daemon 与 CLI
 
-- [ ] 创建安全的 Unix Socket 目录和 Socket。
-- [ ] 拒绝覆盖被普通文件、目录或符号链接占用的 Socket 路径。
-- [ ] daemon 接收并校验 JSON-RPC，调用 core，再把结果提交给 fake backend。
-- [ ] CLI 实现 `status`、`devices`、`event` 和 `clear`。
-- [ ] CLI 在 daemon 不可用或超时时快速失败，默认预算不超过 200 ms。
-- [ ] 处理 SIGINT/SIGTERM，停止接收请求、关闭 backend、清理自己创建的 Socket。
+- [x] 创建安全的 Unix Socket 目录和 Socket。
+- [x] 拒绝覆盖被普通文件、目录或符号链接占用的 Socket 路径。
+- [x] daemon 接收并校验 JSON-RPC，调用 core，再把结果提交给 fake backend。
+- [x] CLI 实现 `status`、`devices`、`event` 和 `clear`。
+- [x] CLI 在 daemon 不可用或超时时快速失败，默认预算不超过 200 ms。
+- [x] 处理 SIGINT/SIGTERM，停止接收请求、关闭 backend、清理自己创建的 Socket。
 
 ### 5.4 验收场景
 
@@ -176,27 +181,36 @@ yarn tiny smoke
 CLI → Unix Socket → JSON-RPC → 租约仲裁 → fake backend
 ```
 
-## 6. P3：接入 asusd 与真实设备
+## 6. P3：接入首个生产 backend-asusd
 
-目标：用真实 backend 替换 fake backend，完成安全的静态灯光控制。
+目标：在不改变 protocol/core 的前提下注册 backend-asusd，完成安全的静态灯光控制，并证明 backend 可替换。
 
 ### 6.1 任务
 
-- [ ] 通过 system D-Bus ObjectManager 动态发现 Aura 和 Slash。
-- [ ] 将 D-Bus 对象映射为统一设备 ID、类型和能力，不暴露易变化的对象路径给上层。
-- [ ] 实现设备状态快照；对无法完整读取的状态明确标记不可恢复字段。
-- [ ] 实现 Aura 单区静态颜色、开关和硬件亮度。
-- [ ] 实现 Slash 已确认支持的开关、亮度和固件样式。
+- [x] 通过 system D-Bus ObjectManager 动态发现 Aura 与 Slash。
+- [x] 将 D-Bus 对象映射为 backend-qualified 稳定设备 ID 和通用能力，不暴露易变化的对象路径给上层。
+- [x] 实现 Aura `LedModeData` 完整快照。
+- [x] 实现 Aura 单区静态颜色；开关和硬件亮度按实际需求延后。
+- [x] 把 Slash 映射为独立设备，并声明 `power`、`brightness` 和
+  `firmware_effect` 通用能力。
+- [x] 实现 Slash 的完整状态快照与恢复：`Enabled`、`Brightness`、
+  `Interval`、`Mode`。
+- [x] 从 Slash 已确认动画中选择与语义直接相关的最小子集，不在通用协议中暴露
+  ROG 模式编号，也不为测试轮播全部枚举。
+- [x] 用正常六状态硬件冒烟测试验证语义映射、亮度、间隔和完整恢复。
 - [ ] 实现能力降级结果，让 CLI 和 diagnostics 能看到“请求效果”和“实际效果”。
-- [ ] daemon 启动时保存快照，正常停止或禁用设备时尽力恢复。
-- [ ] 一个设备失败时隔离错误，不停止其他设备。
-- [ ] 保留 fake backend，普通 CI 继续只运行无硬件测试。
+- [x] daemon 启动时保存快照，正常停止时恢复。
+- [x] 一个设备失败时隔离错误，不停止其他设备。
+- [x] 保留 fake backend。
+- [ ] 用同一组 daemon 合约测试分别运行 fake backend 与 backend-asusd fixture。
 
 ### 6.2 验收门槛
 
 - 不硬编码 GU405AR 的对象路径即可发现 Aura 和 Slash。
+- protocol、core、通用 RPC 和 profile schema 中没有 asusd、Aura 或 Slash 类型。
 - `idle → working → idle` 可以通过 CLI 驱动真实设备。
 - Slash 不支持颜色时返回明确降级信息。
+- Slash 能随语义状态切换已验证的固件动画、间隔和亮度，而不是只切换开关。
 - daemon 正常退出后恢复启动前状态；无法恢复时应用并记录安全基础主题。
 - 硬件测试必须通过 `AGENT_GLOW_HARDWARE_TEST=1` 显式启用。
 
@@ -289,7 +303,7 @@ MobX store 只保存 UI 与 RPC 状态。颜色插值、租约、配置落盘、
 - 快速拖动颜色选择器只更新预览目标，不从 UI 发送逐帧动画。
 - Desktop 崩溃或断开后，预览租约到期并恢复原状态。
 - daemon 拒绝配置时，界面保留用户输入并显示具体字段错误。
-- 无 Slash 或无 Aura 的机器不展示虚假控制项。
+- UI 不按 Aura/Slash 写死页面；只根据每台设备声明的通用能力展示控制项。
 
 ## 10. P7：逐个接入 Agent
 
@@ -377,17 +391,17 @@ Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Clau
 
 按依赖顺序，项目启动时先创建以下任务：
 
-1. **P0-01：冻结许可证选择**  
+1. **P0-01：冻结许可证选择**
    产物：许可证文件和决策记录。
-2. **P0-02：采集 asusd D-Bus 能力**  
+2. **P0-02：采集 asusd D-Bus 能力**
    产物：只读枚举探针、脱敏 fixture 和能力文档。
-3. **P0-03：验证安全硬件读写与恢复**  
+3. **P0-03：验证安全硬件读写与恢复**
    依赖 P0-02；产物：显式运行的硬件探针和恢复记录。
-4. **P0-04：验证 Node.js 24 + GTK4/libadwaita**  
+4. **P0-04：验证 Node.js 24 + GTK4/libadwaita**
    产物：最小窗口探针和运行环境记录。
-5. **P0-05：核对三个 Agent 的真实 Hook 契约**  
+5. **P0-05：核对三个 Agent 的真实 Hook 契约**
    产物：事件矩阵、脱敏 fixtures 和降级说明。
-6. **P0-06：决定发布 runtime 策略**  
+6. **P0-06：决定发布 runtime 策略**
    依赖 P0-04；产物：runtime/ABI 决策记录。
 7. **P1-01：初始化 Yarn monorepo 与 TypeScript**。
 8. **P1-02：建立 test/typecheck/lint/format/build/smoke 门禁**。

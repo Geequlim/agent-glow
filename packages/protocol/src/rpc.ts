@@ -1,0 +1,121 @@
+import { Type, type Static } from '@sinclair/typebox';
+
+import { DeviceDescriptorSchema } from './device.js';
+import { AgentGlowEventSchema } from './event.js';
+import { PROTOCOL_LIMITS, PROTOCOL_VERSION } from './limits.js';
+import { SemanticStateSchema } from './semantic-state.js';
+
+const strict = { additionalProperties: false } as const;
+const JsonRpcIdSchema = Type.Union([
+	Type.Integer({ minimum: 0 }),
+	Type.String({ minLength: 1, maxLength: 64 }),
+]);
+const EmptyParamsSchema = Type.Object({}, strict);
+const SourceSessionSchema = {
+	source: Type.String({ minLength: 1, maxLength: PROTOCOL_LIMITS.maxSourceLength }),
+	sessionId: Type.String({ minLength: 1, maxLength: PROTOCOL_LIMITS.maxSessionIdLength }),
+};
+
+export const InitializeParamsSchema = Type.Object(
+	{
+		protocolVersion: Type.Literal(PROTOCOL_VERSION),
+		clientName: Type.String({ minLength: 1, maxLength: 64 }),
+	},
+	strict,
+);
+
+export const EventEmitParamsSchema = Type.Object({ event: AgentGlowEventSchema }, strict);
+export const EventClearParamsSchema = Type.Object(
+	{
+		...SourceSessionSchema,
+		state: Type.Optional(SemanticStateSchema),
+	},
+	strict,
+);
+
+export const RpcRequestSchema = Type.Union([
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('initialize'),
+			params: InitializeParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('daemon.getStatus'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('device.list'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('event.emit'),
+			params: EventEmitParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('event.clear'),
+			params: EventClearParamsSchema,
+		},
+		strict,
+	),
+]);
+
+export const InitializeResultSchema = Type.Object(
+	{
+		protocolVersion: Type.Literal(PROTOCOL_VERSION),
+		daemonVersion: Type.String({ minLength: 1, maxLength: 64 }),
+	},
+	strict,
+);
+export const DaemonStatusResultSchema = Type.Object(
+	{
+		lifecycle: Type.Union([
+			Type.Literal('starting'),
+			Type.Literal('running'),
+			Type.Literal('stopping'),
+		]),
+		currentState: SemanticStateSchema,
+	},
+	strict,
+);
+export const DeviceListResultSchema = Type.Object(
+	{ devices: Type.Array(DeviceDescriptorSchema, { maxItems: 64 }) },
+	strict,
+);
+export const EventEmitResultSchema = Type.Object(
+	{
+		accepted: Type.Literal(true),
+		currentState: SemanticStateSchema,
+	},
+	strict,
+);
+export const EventClearResultSchema = Type.Object(
+	{
+		cleared: Type.Integer({ minimum: 0 }),
+		currentState: SemanticStateSchema,
+	},
+	strict,
+);
+
+export type RpcRequest = Static<typeof RpcRequestSchema>;

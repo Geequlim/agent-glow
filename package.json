@@ -1,7 +1,7 @@
 {
 	"name": "agent-glow",
 	"version": "0.0.0",
-	"description": "面向 Linux ROG 灯光设备的常驻灯效引擎、配置界面与 Agent 集成",
+	"description": "面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成",
 	"author": "Geequlim",
 	"license": "UNLICENSED",
 	"private": true,
@@ -13,10 +13,19 @@
 		"apps/*",
 		"packages/*"
 	],
+	"dependenciesMeta": {
+		"node-gtk@4.1.1": {
+			"built": true
+		}
+	},
 	"devDependencies": {
+		"@homebridge/dbus-native": "0.7.7",
 		"@tinyaxis/toolkit": "0.3.0",
+		"@types/node": "24.13.3",
+		"node-gtk": "4.1.1",
 		"oxfmt": "0.59.0",
 		"oxlint": "1.70.0",
-		"oxlint-tsgolint": "0.23.0"
+		"oxlint-tsgolint": "0.23.0",
+		"typescript": "7.0.2"
 	}
 }

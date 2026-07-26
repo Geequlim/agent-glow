@@ -1,0 +1,92 @@
+{
+	"capturedAt": "2026-07-26",
+	"service": "xyz.ljones.Asusd",
+	"serviceVersion": "6.3.9",
+	"devices": [
+		{
+			"path": "/xyz/ljones/aura/19b6_4_5",
+			"interfaces": {
+				"xyz.ljones.Aura": {
+					"Brightness": {
+						"signature": "u",
+						"value": 3
+					},
+					"DeviceType": {
+						"signature": "u",
+						"value": 0
+					},
+					"LedMode": {
+						"signature": "u",
+						"value": 0
+					},
+					"LedModeData": {
+						"signature": "(uu(yyy)(yyy)ss)",
+						"value": [0, 0, [0, 0, 0], [0, 0, 0], "Med", "Right"]
+					},
+					"LedPower": {
+						"signature": "(a(ubbbb))",
+						"value": [[[1, true, true, true, true]]]
+					},
+					"SupportedBasicModes": {
+						"signature": "au",
+						"value": [0]
+					},
+					"SupportedBasicZones": {
+						"signature": "au",
+						"value": []
+					},
+					"SupportedBrightness": {
+						"signature": "au",
+						"value": [0, 1, 2, 3]
+					},
+					"SupportedPowerZones": {
+						"signature": "au",
+						"value": [1]
+					}
+				},
+				"xyz.ljones.Slash": {
+					"Brightness": {
+						"signature": "y",
+						"value": 64
+					},
+					"Enabled": {
+						"signature": "b",
+						"value": false
+					},
+					"Interval": {
+						"signature": "y",
+						"value": 1
+					},
+					"Mode": {
+						"signature": "u",
+						"value": 50
+					},
+					"ShowBatteryWarning": {
+						"signature": "b",
+						"value": false
+					},
+					"ShowOnBattery": {
+						"signature": "b",
+						"value": false
+					},
+					"ShowOnBoot": {
+						"signature": "b",
+						"value": false
+					},
+					"ShowOnLidClosed": {
+						"signature": "b",
+						"value": false
+					},
+					"ShowOnShutdown": {
+						"signature": "b",
+						"value": false
+					},
+					"ShowOnSleep": {
+						"signature": "b",
+						"value": false
+					}
+				}
+			}
+		}
+	]
+}

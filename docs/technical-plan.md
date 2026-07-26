@@ -1,6 +1,6 @@
 ---
 title: AgentGlow 技术规划
-description: 面向 Linux ROG 灯光设备的常驻灯效引擎、配置界面与 Agent 集成方案
+description: 面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成方案
 order: 1
 ---
 
@@ -8,9 +8,9 @@ order: 1
 
 ## 1. 项目定位
 
-AgentGlow 是一个运行在 Linux 用户会话中的 ROG 灯光状态服务。它把 AI Agent、编辑器、脚本等外部系统产生的语义状态，转换为平滑、可配置的键盘 Aura 与背盖 Slash 灯效。
+AgentGlow 是一个运行在 Linux 用户会话中的硬件无关灯光状态服务。它把 AI Agent、编辑器、脚本等外部系统产生的语义状态，转换为平滑、可配置的灯光视觉状态，再由 backend 映射到实际设备。
 
-项目核心不是“Codex 灯光插件”，而是一个与上层工具解耦的通用灯效引擎：
+项目核心既不是“Codex 灯光插件”，也不是“ROG 灯光控制器”，而是同时与事件来源和具体硬件解耦的通用灯效引擎：
 
 ```text
 Codex / Claude Code / OpenCode / 用户脚本
@@ -20,21 +20,26 @@ Codex / Claude Code / OpenCode / 用户脚本
              AgentGlow daemon
         状态仲裁 / 动画 / 渐变 / 恢复
                     │
-                    │ system D-Bus
+                    │ 通用设备能力与视觉命令
                     ▼
-                  asusd
-                    │
-                    ▼
-          Aura 键盘 / Slash 背盖灯
+              backend contract
+             ├── fake backend
+             ├── backend-asusd
+             │       └── Aura / Slash
+             └── future backends
+                     └── 外置 RGB / 其他灯具
 ```
 
-Codex Hook 只是第一种事件来源。任何能执行命令或连接 Unix Socket 的程序，都可以接入相同的协议。
+Codex Hook 只是第一种事件来源，asusd 只是第一种生产设备实现。任何能执行命令或连接 Unix Socket 的程序都可以接入相同事件协议；任何满足 backend contract 的设备实现都可以消费相同视觉状态。
 
 ### 1.1 首期支持范围
 
 首期支持：
 
 - Linux；
+- 硬件无关的事件、仲裁、动画、设备能力和 backend contract；
+- 用于无硬件开发和自动测试的 fake backend；
+- 首个生产实现 `backend-asusd`；
 - `asusd` 已通过 D-Bus 暴露的 Aura 与 Slash 设备；
 - 单区 RGB 键盘的颜色、亮度、呼吸和状态过渡；
 - Slash 已有的开关、亮度和固件动画；
@@ -43,12 +48,14 @@ Codex Hook 只是第一种事件来源。任何能执行命令或连接 Unix Soc
 - systemd 用户服务；
 - 通用 Linux x86_64 压缩包与 AUR 二进制包。
 
-“支持所有 ROG 设备”是长期目标，不能作为首版承诺。项目应采用能力探测，只有 `asusd` 实际暴露的功能才显示并使用。
+首个公开版本只承诺经过真实验证的 asusd 能力，不承诺所有 ROG 设备，也不承诺外置 RGB 等其他硬件。项目从第一版就采用通用能力探测；UI 只显示 backend 对具体设备实际声明的功能。
 
 ### 1.2 非目标
 
 首期不做：
 
+- 同时开发第二个生产 backend；
+- 动态加载未经审核的第三方 backend；
 - 绕过 `asusd` 直接写 `/dev/hidraw*`；
 - 要求 root 运行 AgentGlow；
 - 伪造逐键 RGB、Lightbar、Logo 等硬件能力；
@@ -56,7 +63,7 @@ Codex Hook 只是第一种事件来源。任何能执行命令或连接 Unix Soc
 - 在 Hook 中实现动画或直接访问硬件；
 - 为未知设备发送未经验证的原始 HID 数据包。
 
-GU405AR 的 Slash 支持仍由已验证的补丁版 `asusd` 提供。AgentGlow 只消费 D-Bus 接口，不把机型补丁混入自身。
+通用协议、core 和 Desktop 不得包含 asusd 对象路径、Aura/Slash 模式编号或 ROG 专属分支。GU405AR 的 Slash 支持仍由已验证的补丁版 `asusd` 提供；`backend-asusd` 只消费 D-Bus 接口，不把机型补丁混入 AgentGlow。
 
 ## 2. 已确认的技术决策
 
@@ -69,11 +76,13 @@ GU405AR 的 Slash 支持仍由已验证的补丁版 `asusd` 提供。AgentGlow �
 | 包管理 | Yarn 4，node-modules linker |
 | 仓库 | Yarn Workspaces monorepo |
 | 构建 | Rspack，输出可直接运行的 CJS bundle |
+| 命令行框架 | Commander.js，统一 daemon 与 CLI 的参数、帮助和版本行为 |
 | 桌面界面 | `node-gtk` + GTK4 + libadwaita |
 | UI 状态 | MobX |
 | 本地协议 | Unix Socket + JSON-RPC |
 | 协议类型 | TypeBox + `vscode-jsonrpc` |
-| D-Bus | `@homebridge/dbus-native` |
+| 硬件抽象 | capability-driven `LightingBackend` contract |
+| asusd 实现 | `@homebridge/dbus-native` 访问 system D-Bus |
 | 配置 | YAML，TypeBox 校验，原子更新 |
 | 测试 | Vitest |
 | 代码质量 | TypeScript、Oxlint、Oxfmt |
@@ -105,7 +114,7 @@ agent-glow/
 ├── packages/
 │   ├── protocol/            # JSON-RPC、事件、配置和能力类型
 │   ├── config/              # YAML 读取、校验、迁移和原子保存
-│   ├── core/                # 状态仲裁、时间线、颜色与动画算法
+│   ├── core/                # 状态仲裁、时间线、颜色、动画与 backend contract
 │   └── backend-asusd/       # asusd D-Bus 发现、能力映射与设备写入
 ├── integrations/
 │   ├── codex/
@@ -123,7 +132,7 @@ agent-glow/
 └── yarn.lock
 ```
 
-首期不进一步拆分动画包、颜色包或每种 Agent 的 npm 包。只有当它们出现独立版本或独立复用需求时再拆分。
+首期不进一步拆分动画包、颜色包、backend SDK 或每种 Agent 的 npm 包。只有当它们出现独立版本或独立复用需求时再拆分。`protocol` 和 `core` 不得依赖 `backend-asusd`。
 
 ## 4. 运行时架构
 
@@ -136,7 +145,7 @@ agent-glow/
 - 把各 Agent 的原始 Hook 输入转换为统一事件；
 - 通过 Unix Socket 把事件提交给 daemon；
 - 在 daemon 未启动或超时时快速失败，不阻塞 Agent；
-- 不保存最终状态，不计算颜色，不访问 D-Bus。
+- 不保存最终状态，不计算颜色，不访问 backend 或任何硬件接口。
 
 稳定入口示例：
 
@@ -159,9 +168,9 @@ agent-glow adapt opencode
 
 #### Daemon
 
-daemon 是唯一的业务核心和硬件写入者，负责：
+daemon 是唯一的业务核心和 backend 编排者，负责：
 
-- 发现 Aura、Slash 设备及其能力；
+- 注册 backend 并聚合其设备与真实能力；
 - 接收和校验事件；
 - 维护每个来源、会话的状态租约；
 - 执行优先级仲裁；
@@ -182,11 +191,17 @@ daemon 是唯一的业务核心和硬件写入者，负责：
 - 管理 Agent 集成；
 - 展示当前状态、活动会话和诊断信息。
 
-桌面应用不得直接编辑配置文件或访问 D-Bus。所有修改通过 daemon 校验并原子提交。
+桌面应用不得直接编辑配置文件，也不得访问 backend、D-Bus、HID 或其他硬件接口。所有修改通过 daemon 校验并原子提交。
 
-#### asusd backend
+#### backend contract
 
-后端只通过 `asusd` 的 system D-Bus 接口控制硬件：
+每个 backend 负责发现设备、声明通用能力、读取恢复快照、应用视觉目标、报告降级结果、恢复状态并关闭连接。设备 ID 必须带 backend 命名空间且跨重连稳定，不能直接暴露一次启动中的临时路径。
+
+core 只根据通用能力生成视觉目标。backend 负责把目标映射为硬件操作，并返回“请求效果、实际效果、降级原因和安全提交频率”。daemon 可以编排多个 backend 和多个设备；首版发布只注册 `backend-asusd`。
+
+#### backend-asusd
+
+首个生产 backend 只通过 `asusd` 的 system D-Bus 接口控制硬件：
 
 - 使用 ObjectManager 动态发现对象；
 - 识别 `xyz.ljones.Aura` 与 `xyz.ljones.Slash` 接口；
@@ -323,19 +338,19 @@ intensity(t) = min + (max - min) × (1 - cos(2πt / period)) / 2
 - 硬件亮度保持固定档位；
 - 平滑度主要由 RGB 强度实现。
 
-Aura 的硬件亮度常是离散档位，例如 0–3。逐帧切换硬件亮度会产生明显台阶，因此呼吸期间保持硬件亮度不变，只改变发送颜色的光强。
+许多设备的硬件亮度是离散档位，例如首个 backend 中 Aura 报告 0–3。逐帧切换硬件亮度会产生明显台阶，因此通用渲染器输出连续的软件强度，backend 在呼吸期间保持硬件亮度不变，只改变颜色光强。
 
 当设备原生支持 `Breathe` 且用户选择“硬件效果”时，可直接使用固件动画，降低写入频率。需要精确颜色、渐变或跨状态衔接时，使用软件渲染的静态帧。
 
 ### 6.4 写入频率和背压
 
-首版软件动画默认 10 Hz，可在 5–20 Hz 安全范围内配置。不是所有设备都适合高频 D-Bus 写入，因此最终上限由 backend 能力和稳定性策略共同决定。
+首版软件动画默认 10 Hz，可在 5–20 Hz 安全范围内配置。不是所有设备都适合高频写入，因此最终上限由各 backend 声明的设备能力和稳定性策略共同决定。
 
 渲染循环必须：
 
 - 使用 monotonic clock，不累计 `setInterval` 漂移；
 - 永远只保留最新待提交帧；
-- D-Bus 写入未完成时不并发写入同一设备；
+- backend 写入未完成时不并发写入同一设备；
 - 写入变慢时丢弃过期帧，而不是排队追赶；
 - 相同量化帧不重复提交；
 - 连续失败后暂停该设备动画并报告降级状态；
@@ -343,9 +358,9 @@ Aura 的硬件亮度常是离散档位，例如 0–3。逐帧切换硬件亮度
 
 ### 6.5 能力降级
 
-统一主题按设备能力映射：
+统一主题按设备能力映射，Aura 和 Slash 只是首个 backend 的实例：
 
-| 目标效果 | Aura 单区 RGB | Slash | 无 RGB，仅亮度 |
+| 目标效果 | 单区 RGB（如 Aura） | 固件效果设备（如 Slash） | 无 RGB，仅亮度 |
 | --- | --- | --- | --- |
 | 静态色 | 静态颜色 | 选择最接近的固件样式或仅开关 | 固定亮度 |
 | 呼吸 | 固件 Breathe 或软件 RGB 帧 | 固件 Pulse/Flow 等最接近效果 | 亮度脉冲，若安全 |
@@ -356,14 +371,14 @@ Aura 的硬件亮度常是离散档位，例如 0–3。逐帧切换硬件亮度
 
 ## 7. 设备所有权与恢复
 
-灯光可能同时被 ROG Control Center、快捷键或其他程序控制。首版采用清晰的所有权策略：
+灯光可能同时被厂商控制中心、快捷键或其他程序控制。首版采用清晰的所有权策略：
 
 - AgentGlow 启用时，由 daemon 统一管理被选中的设备；
 - daemon 启动后先读取并保存可恢复的设备状态；
 - 无 Agent 活动时显示用户配置的基础主题；
 - daemon 停止、禁用设备或发生致命错误时，尽力恢复启动前状态；
 - 如果状态无法完整读取，则恢复到用户配置的安全基础主题；
-- UI 明确提示：AgentGlow 启用期间，在 ROG Control Center 修改同一设备可能被下一帧覆盖。
+- UI 展示 backend 提供的所有权提示。对于 asusd 设备，AgentGlow 启用期间在 ROG Control Center 修改同一设备可能被下一帧覆盖。
 
 不做两个控制器同时写同一设备的“自动融合”。
 
@@ -394,7 +409,7 @@ $XDG_RUNTIME_DIR/agent-glow/daemon.sock
 | `preview.start` | 创建有 TTL 的预览租约 |
 | `preview.update` | 更新预览目标，不重置当前插值 |
 | `preview.stop` | 停止预览并平滑恢复 |
-| `diagnostics.get` | 获取 D-Bus、降级和错误摘要 |
+| `diagnostics.get` | 获取 backend、降级和错误摘要 |
 
 通知：
 
@@ -454,13 +469,13 @@ profiles:
     effect: pulse
     pattern: double
 
-devices:
-  aura:
+backends:
+  asusd:
     enabled: true
-    hardwareBrightness: 2
-  slash:
-    enabled: true
-    brightness: 128
+    aura:
+      hardwareBrightness: 2
+    slash:
+      brightness: 128
 ```
 
 配置管理要求：
@@ -483,7 +498,7 @@ devices:
 - systemd 启用状态；
 - 当前语义状态和来源；
 - 当前颜色、效果和降级结果；
-- 发现的 Aura/Slash 设备；
+- 发现的 backend、设备和真实能力；
 - 最近错误。
 
 ### 10.2 状态主题
@@ -499,7 +514,7 @@ devices:
 ### 10.3 设备
 
 - 启用或禁用某个设备；
-- 展示 `asusd` 返回的模式、亮度和分区；
+- 展示 backend 返回的颜色、亮度、分区和固件效果能力；
 - 调整固定硬件亮度；
 - 查看某个主题在该设备上的实际降级方式；
 - 执行短时设备测试。
@@ -516,8 +531,8 @@ devices:
 
 ### 10.5 诊断
 
-- daemon、Node.js、asusd 版本；
-- D-Bus 对象和能力摘要；
+- daemon、Node.js、backend 版本；backend-asusd 额外展示 asusd 版本；
+- backend 设备和能力摘要；backend-asusd 额外展示脱敏 D-Bus 摘要；
 - 活动租约；
 - 最近降级与写入错误；
 - 导出脱敏诊断文本；
@@ -587,7 +602,13 @@ WantedBy=graphical-session.target
 
 ## 13. 可靠性和安全
 
-### 13.1 D-Bus 恢复
+### 13.1 Backend 恢复
+
+- 每个 backend 独立报告健康状态、重连和设备变化；
+- 某个 backend 不可用时保留逻辑目标，不影响其他 backend；
+- backend 恢复后重新发现设备和能力，从当前逻辑时间计算一帧；
+
+backend-asusd 还必须：
 
 - 监听 `asusd` 名称所有者变化；
 - `asusd` 消失时暂停提交并保留目标状态；
@@ -597,9 +618,9 @@ WantedBy=graphical-session.target
 
 ### 13.2 失败隔离
 
-- 一个设备失败不停止其他设备；
-- Aura 软件动画失败时可降级到固件静态或 Breathe；
-- Slash 失败时不影响键盘；
+- 一个设备或 backend 失败不停止其他设备与 backend；
+- backend-asusd 内 Aura 软件动画失败时可降级到固件静态或 Breathe；
+- backend-asusd 内 Slash 失败时不影响键盘；
 - 连续失败使用指数退避，并在 UI 中显示；
 - 未捕获异常触发有界退出，由 systemd 重启；
 - 禁止无限高速重试和日志刷屏。
@@ -610,7 +631,7 @@ WantedBy=graphical-session.target
 - Hook 命令默认 200 毫秒内完成，连接失败不阻塞 Agent；
 - 不执行 metadata 中的命令；
 - 配置中的颜色、周期、频率和亮度均限制范围；
-- 不允许 RPC 客户端绕过 backend 发送原始 D-Bus/HID 数据。
+- 不允许 RPC 客户端绕过 backend 发送原始 D-Bus、HID、网络或厂商命令。
 
 ## 14. 测试策略
 
@@ -631,7 +652,8 @@ WantedBy=graphical-session.target
 
 - Unix Socket 权限和陈旧 Socket 清理；
 - JSON-RPC schema、超时和消息限制；
-- fake asusd backend 下的完整事件到帧流程；
+- 通用 fake backend 下的完整事件到帧流程；
+- backend-asusd 的 fixture 驱动能力映射测试；
 - 配置原子更新和失败回滚；
 - UI 断开后预览租约自动过期；
 - systemd 客户端命令构造。
@@ -701,7 +723,7 @@ Linux staging root：
 /usr/share/licenses/agent-glow/...
 ```
 
-可像 VoxSpell 一样随二进制包携带固定 Node.js 24 runtime，保证 `node-gtk` ABI 与发布环境一致。AUR 包声明 GTK4、libadwaita、GObject Introspection 和 `asusctl`/`asusd` 运行依赖。
+可像 VoxSpell 一样随二进制包携带固定 Node.js 24 runtime，保证 `node-gtk` ABI 与发布环境一致。GTK4、libadwaita 和 GObject Introspection 是桌面端运行依赖；`asusctl`/`asusd` 是首发 `backend-asusd` 的运行依赖，不是 AgentGlow 核心协议的固有依赖。
 
 ### 15.3 发布门禁
 
@@ -717,7 +739,7 @@ Linux staging root：
 8. 从同一资产生成 AUR `PKGBUILD` 和 `.SRCINFO`；
 9. 验证来源后更新 `agent-glow-bin`。
 
-首版只发布 Linux x86_64。arm64 和其他发行版在真实测试和 CI 环境具备后再加入。
+首版只发布 Linux x86_64。
 
 ### 15.4 许可证
 
@@ -735,21 +757,22 @@ Linux staging root：
 ### M0：工程骨架
 
 - 初始化 Node.js 24 + Yarn 4 monorepo；
-- 建立 protocol、core、backend、daemon、CLI、desktop；
+- 建立 protocol、core、backend-asusd、daemon、CLI、desktop；
+- 用 fake backend 固化硬件无关的 `LightingBackend` contract；
 - 接入 TypeScript、Vitest、Oxlint、Oxfmt、Rspack、tiny；
-- 建立 CI 基础门禁。
 
 验收：空 daemon 能通过安全 Unix Socket 响应 `initialize` 和 `getStatus`。
 
-### M1：设备发现与手动控制
+### M1：首个生产 backend 与手动控制
 
-- 连接 system D-Bus；
+- 注册通用 backend registry；
+- 实现 backend-asusd 并连接 system D-Bus；
 - 动态发现 Aura/Slash；
 - 读取并展示能力；
 - CLI 设置语义状态；
 - 静态颜色、开关、亮度和安全恢复。
 
-验收：不硬编码 GU405AR 路径即可发现设备，并完成 `idle ↔ working`。
+验收：protocol/core 不包含 asusd 类型；替换 fake backend 或 backend-asusd 都能完成 `idle ↔ working`，且 asusd 实现不硬编码 GU405AR 路径。
 
 ### M2：动画引擎
 
@@ -793,6 +816,8 @@ Linux staging root：
 首个公开版本必须同时满足：
 
 - daemon 以普通用户身份由 systemd 管理；
+- protocol、core、配置 profile 和通用 RPC 不包含 asusd、Aura、Slash 或 ROG 专属类型；
+- fake backend 和 backend-asusd 实现同一 backend contract；
 - Hook 与配置界面均不直接控制硬件；
 - Aura 单区 RGB 能平滑显示静态、呼吸、授权、成功和错误效果；
 - Slash 至少能按主题控制开关、亮度和已支持样式；
@@ -814,6 +839,6 @@ Linux staging root：
 - 更丰富的 Slash 场景编排；
 - 逐键 RGB 布局和空间动画；
 - Wayland 桌面状态集成；
-- 其他厂商的 backend。
+- 外置 RGB、网络灯具和其他厂商的 backend。
 
-新 backend 应实现同一能力接口，不改变 Agent 事件模型和 UI 配置语义。这样 AgentGlow 可以逐步从 ROG 专用工具演进为通用的本地状态灯效服务。
+新 backend 应实现同一能力接口，不改变 Agent 事件模型和 UI 配置语义。AgentGlow 从第一版就是通用本地状态灯效服务；backend-asusd 只是第一个经过真实设备验证的实现。

@@ -1,18 +1,16 @@
 {
-	"name": "@agent-glow/protocol",
+	"name": "@agent-glow/backend-asusd",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
-		"./device": "./src/device.ts",
-		"./event": "./src/event.ts",
-		"./limits": "./src/limits.ts",
-		"./rpc": "./src/rpc.ts",
-		"./semantic-state": "./src/semantic-state.ts"
+		".": "./src/backend.ts"
 	},
 	"dependencies": {
-		"@sinclair/typebox": "0.34.52"
+		"@agent-glow/core": "workspace:^",
+		"@agent-glow/protocol": "workspace:^",
+		"@homebridge/dbus-native": "0.7.7"
 	},
 	"devDependencies": {
 		"@types/node": "24.13.3",

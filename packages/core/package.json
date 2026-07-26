@@ -5,6 +5,10 @@
 	"type": "module",
 	"sideEffects": false,
 	"exports": {
+		"./backend": "./src/backend.ts",
+		"./fake-backend": "./src/fake-backend.ts",
+		"./lease-arbiter": "./src/lease-arbiter.ts",
+		"./semantic-visual-state": "./src/semantic-visual-state.ts",
 		"./state-priority": "./src/state-priority.ts"
 	},
 	"dependencies": {

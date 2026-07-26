@@ -5,32 +5,93 @@ develop:
       command:
         - yarn --cwd packages/protocol vitest run
         - yarn --cwd packages/core vitest run
+        - yarn --cwd packages/backend-asusd vitest run
+        - yarn --cwd apps/daemon vitest run
+        - yarn --cwd apps/cli vitest run
+    - name: architecture
+      description: 检查硬件无关核心的依赖边界
+      command: node scripts/check-architecture.mts
     - name: typecheck
       description: 执行 TypeScript 类型检查
       command:
+        - yarn tsc -p scripts/tsconfig.json
         - yarn --cwd packages/protocol tsc --noEmit
         - yarn --cwd packages/core tsc --noEmit
+        - yarn --cwd packages/backend-asusd tsc --noEmit
+        - yarn --cwd apps/daemon tsc --noEmit
+        - yarn --cwd apps/cli tsc --noEmit
     - name: lint
       description: 使用 Oxlint 执行静态代码分析
-      command: yarn oxlint -c oxlint.config.mts -f stylish packages
+      command: yarn oxlint -c oxlint.config.mts -f stylish apps packages scripts
       actions:
         - name: fix
           description: 自动修复 Oxlint 问题
-          command: yarn oxlint -c oxlint.config.mts -f stylish packages --fix
+          command: yarn oxlint -c oxlint.config.mts -f stylish apps packages scripts --fix
     - name: format
       description: 使用 Oxfmt 格式化代码
-      command: yarn oxfmt packages
+      command: yarn oxfmt apps packages scripts
       actions:
         - name: check
           description: 检查代码格式
-          command: yarn oxfmt --check packages
+          command: yarn oxfmt --check apps packages scripts
+    - name: build
+      description: 构建 daemon 与 CLI bundle
+      command:
+        - yarn --cwd apps/daemon rspack build
+        - yarn --cwd apps/cli rspack build
+    - name: smoke
+      description: 验证 daemon 与 CLI 构建产物
+      command:
+        - yarn tiny build
+        - node scripts/smoke-built-apps.mts
+      actions:
+        - name: hardware
+          description: 显示硬件效果冒烟测试计划
+          command: node scripts/smoke-asusd-effects.mts
+          actions:
+            - name: aura
+              description: 构建并依次展示 Aura 支持的全部语义状态
+              command:
+                - yarn tiny build
+                - AGENT_GLOW_HARDWARE_TEST=1 node scripts/smoke-asusd-effects.mts --device=aura --confirm-write
+            - name: slash
+              description: 构建并依次展示 Slash 的语义状态映射
+              command:
+                - yarn tiny build
+                - AGENT_GLOW_HARDWARE_TEST=1 node scripts/smoke-asusd-effects.mts --device=slash --confirm-write
+    - name: probe
+      description: 输出本机 P0 依赖环境
+      command: node scripts/probes/environment.mts
+      actions:
+        - name: asusd
+          description: 只读发现 asusd Aura 与 Slash 能力
+          command: node scripts/probes/asusd-capabilities.mts
+        - name: gtk
+          description: 验证 node-gtk、GTK4 与 libadwaita 可加载
+          command: node scripts/probes/gtk.mjs
+          actions:
+            - name: window
+              description: 打开并自动关闭 GTK 探针窗口
+              command: node scripts/probes/gtk.mjs --window
+        - name: hardware
+          description: 显示硬件写入与恢复探针计划
+          command: node scripts/probes/asusd-write-restore.mts --target=slash-enabled
+          actions:
+            - name: aura
+              description: 显示 Aura 静态颜色写入与恢复计划
+              command: node scripts/probes/asusd-write-restore.mts --target=aura-color
+            - name: slash
+              description: 显示 Slash 开关写入与恢复计划
+              command: node scripts/probes/asusd-write-restore.mts --target=slash-enabled
     - name: check
       description: 执行完整质量检查
       command:
+        - yarn tiny architecture
         - yarn tiny typecheck
         - yarn tiny lint
         - yarn tiny format/check
         - yarn tiny test
+        - yarn tiny smoke
     - name: fix-worktree
       description: 规范化工作区
       command:
