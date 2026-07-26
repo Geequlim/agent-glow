@@ -42,6 +42,10 @@ describe('P5 service lifecycle', () => {
 
 		expect(await request(daemon.socketPath, 'device.list', {})).toEqual({ devices: [] });
 		expect(await request(daemon.socketPath, 'diagnostics.get', {})).toMatchObject({
+			service: {
+				entryPath: expect.stringMatching(/^\//u),
+				runtimePath: process.execPath,
+			},
 			backend: { id: 'lifecycle', health: 'unavailable' },
 			devices: [],
 		});
@@ -102,6 +106,43 @@ describe('P5 service lifecycle', () => {
 		expect(performance.now() - startedAt).toBeLessThan(250);
 		expect(backend.closed).toBe(true);
 		expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('shutdown timed out'));
+	});
+
+	it('atomically clears lifecycle leases before applying a completion pulse', async () => {
+		const backend = new LifecycleBackend(true);
+		const daemon = await startTestDaemon(backend);
+		const session = { source: 'zcode', sessionId: 'zcode-session' };
+		await request(daemon.socketPath, 'event.emit', {
+			event: {
+				version: 1,
+				...session,
+				state: 'working',
+				phase: 'enter',
+			},
+		});
+		await request(daemon.socketPath, 'event.emit', {
+			event: {
+				version: 1,
+				...session,
+				state: 'tool_use',
+				phase: 'enter',
+			},
+		});
+
+		expect(
+			await request(daemon.socketPath, 'event.transition', {
+				...session,
+				clearStates: ['waiting_permission', 'tool_use', 'working'],
+				event: { state: 'success', phase: 'pulse', ttlMs: 10 },
+			}),
+		).toMatchObject({ currentState: 'success' });
+		expect(backend.commits.at(-1)?.semanticState).toBe('success');
+
+		await delay(15);
+		expect(await request(daemon.socketPath, 'daemon.getStatus', {})).toMatchObject({
+			currentState: 'idle',
+		});
+		await daemon.close();
 	});
 });
 

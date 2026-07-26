@@ -38,6 +38,35 @@ export const EventClearParamsSchema = Type.Object(
 	},
 	strict,
 );
+export const EventTransitionParamsSchema = Type.Object(
+	{
+		...SourceSessionSchema,
+		clearStates: Type.Array(SemanticStateSchema, {
+			maxItems: 7,
+			uniqueItems: true,
+		}),
+		event: Type.Optional(
+			Type.Object(
+				{
+					state: SemanticStateSchema,
+					phase: Type.Union([
+						Type.Literal('enter'),
+						Type.Literal('leave'),
+						Type.Literal('pulse'),
+					]),
+					ttlMs: Type.Optional(
+						Type.Integer({
+							minimum: 1,
+							maximum: PROTOCOL_LIMITS.maxTtlMs,
+						}),
+					),
+				},
+				strict,
+			),
+		),
+	},
+	strict,
+);
 export const DeviceConfigurationGetParamsSchema = Type.Object(
 	{ deviceId: DeviceDescriptorSchema.properties.id },
 	strict,
@@ -188,6 +217,15 @@ export const RpcRequestSchema = Type.Union([
 		},
 		strict,
 	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('event.transition'),
+			params: EventTransitionParamsSchema,
+		},
+		strict,
+	),
 ]);
 
 export const InitializeResultSchema = Type.Object(
@@ -215,6 +253,54 @@ export const DeviceListResultSchema = Type.Object(
 	strict,
 );
 export const DeviceConfigurationResultSchema = DeviceConfigurationSchema;
+export const DiagnosticsResultSchema = Type.Object(
+	{
+		service: Type.Object(
+			{
+				entryPath: Type.String({ minLength: 1, maxLength: 4096 }),
+				runtimePath: Type.String({ minLength: 1, maxLength: 4096 }),
+			},
+			strict,
+		),
+		backend: Type.Object(
+			{
+				id: Type.String({ minLength: 1, maxLength: 128 }),
+				health: Type.String({ minLength: 1, maxLength: 64 }),
+			},
+			strict,
+		),
+		devices: Type.Array(
+			Type.Object(
+				{
+					deviceId: DeviceDescriptorSchema.properties.id,
+					enabled: Type.Boolean(),
+					delivery: Type.Object(
+						{
+							active: Type.Boolean(),
+							consecutiveFailures: Type.Integer({ minimum: 0 }),
+							pending: Type.Boolean(),
+							retryScheduled: Type.Boolean(),
+						},
+						strict,
+					),
+					status: Type.Union([
+						Type.Literal('unknown'),
+						Type.Literal('ok'),
+						Type.Literal('degraded'),
+						Type.Literal('error'),
+					]),
+					requested: Type.Optional(Type.Unknown()),
+					applied: Type.Optional(Type.Unknown()),
+					details: Type.Optional(Type.Unknown()),
+					reason: Type.Optional(Type.String({ maxLength: 4096 })),
+				},
+				strict,
+			),
+			{ maxItems: 64 },
+		),
+	},
+	strict,
+);
 export const EventEmitResultSchema = Type.Object(
 	{
 		accepted: Type.Literal(true),
@@ -252,5 +338,6 @@ export const PreviewFrameResultSchema = Type.Union([
 ]);
 
 export type RpcRequest = Static<typeof RpcRequestSchema>;
+export type DiagnosticsResult = Static<typeof DiagnosticsResultSchema>;
 export type PreviewResult = Static<typeof PreviewResultSchema>;
 export type PreviewFrameResult = Static<typeof PreviewFrameResultSchema>;

@@ -50,7 +50,7 @@ Agent 适配器
 | P4 动画与可靠性     | 多会话仲裁、平滑动画、背压和重连可用               | 是               |
 | P5 配置与服务       | YAML 配置、RPC 更新、systemd 用户服务可用          | 是               |
 | P6 Desktop          | 用户可通过 GTK 界面配置、预览和诊断                | 是               |
-| P7 Agent 集成       | Codex、OpenCode 可稳定接入                         | 部分             |
+| P7 Agent 集成       | Codex、OpenCode、ZCode 可稳定接入                  | 部分             |
 | P8 发布候选         | tar.zst 和 AUR 包通过安装、升级、卸载测试          | 是               |
 
 P0–P3 构成第一个“开发者可用版本”；P4–P5 构成 headless beta；P6–P8 构成首个公开版本。
@@ -435,10 +435,17 @@ Codex 连续稳定使用后，再把安装和 fixture 测试模式复用于 Open
 - [x] 对不可观测状态在 UI 和文档中展示降级说明。
 - [x] 两个来源都提交标准事件并复用同一套 daemon 多会话仲裁规则。
 
-P7 的软件实现已完成。剩余真实试用必须由用户在桌面界面确认写入个人 Agent 配置后
-进行；自动验证不会越过该确认，也不会直接修改 `~/.codex` 或 `~/.config/opencode`。
+### 10.3 ZCode
 
-### 10.3 验收门槛
+- [x] 按本机 ZCode 3.4.2 原生 Hook schema 接入全部七种受支持事件。
+- [x] 使用 `~/.zcode/cli/config.json` 的 `hooks.events`，安装时显式启用配置型 Hook。
+- [x] 使用无 shell 的 `process` handler，支持检测、预览、幂等升级和精确移除。
+- [x] 将 `PostToolUseFailure` 映射为错误提示并清理工具调用租约。
+
+P7 的软件实现已完成。剩余真实试用必须由用户在桌面界面确认写入个人 Agent 配置后
+进行；自动验证不会越过该确认，也不会直接修改各 Agent 的用户配置。
+
+### 10.4 验收门槛
 
 - Hook 在 daemon 未启动时快速失败且不阻塞 Agent。
 - Agent 正常结束能释放持续租约。

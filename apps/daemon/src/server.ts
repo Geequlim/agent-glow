@@ -34,7 +34,11 @@ import {
 	PROTOCOL_LIMITS,
 	PROTOCOL_VERSION,
 } from '@agent-glow/protocol/limits';
-import { type RpcRequest, RpcRequestSchema } from '@agent-glow/protocol/rpc';
+import {
+	type DiagnosticsResult,
+	type RpcRequest,
+	RpcRequestSchema,
+} from '@agent-glow/protocol/rpc';
 import { Value } from '@sinclair/typebox/value';
 
 import { createLightingBackend } from './backend-factory.js';
@@ -208,7 +212,11 @@ export async function startDaemonServer(
 					return getRegisteredDeviceConfiguration(request.params.deviceId);
 				});
 			case 'diagnostics.get': {
-				return {
+				const diagnostics: DiagnosticsResult = {
+					service: {
+						entryPath: path.resolve(process.argv[1] ?? 'unknown'),
+						runtimePath: process.execPath,
+					},
 					backend: {
 						id: backend.id,
 						health: lifecyclePaused ? 'unavailable' : backend.getHealth(),
@@ -220,6 +228,7 @@ export async function startDaemonServer(
 						...(deviceDiagnostics.get(device.id) ?? { status: 'unknown' }),
 					})),
 				};
+				return diagnostics;
 			}
 			case 'preview.start':
 			case 'preview.update':
@@ -253,6 +262,24 @@ export async function startDaemonServer(
 				const cleared = arbiter.clear(source, sessionId, state);
 				const currentState = arbiter.currentState();
 				if (!previewState) await displayState(currentState);
+				return { cleared, currentState };
+			}
+			case 'event.transition': {
+				const { source, sessionId, clearStates, event } = request.params;
+				let cleared = 0;
+				for (const state of clearStates) {
+					cleared += arbiter.clear(source, sessionId, state);
+				}
+				if (event) {
+					arbiter.apply({
+						version: 1,
+						source,
+						sessionId,
+						...event,
+					});
+				}
+				const currentState = arbiter.currentState();
+				if (!previewState) await displayState(currentState, event?.phase === 'pulse');
 				return { cleared, currentState };
 			}
 			default:

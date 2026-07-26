@@ -50,7 +50,12 @@ export class SystemdServiceClient implements ServiceClient {
 	}
 
 	async setEnabled(enabled: boolean): Promise<void> {
-		await this.#systemctl([enabled ? 'enable' : 'disable', '--now', SERVICE_NAME]);
+		if (enabled) {
+			await this.#systemctl(['unmask', SERVICE_NAME]);
+			await this.#systemctl(['enable', '--now', SERVICE_NAME]);
+			return;
+		}
+		await this.#systemctl(['disable', '--now', SERVICE_NAME]);
 	}
 
 	async #systemctl(args: readonly string[]): Promise<string> {

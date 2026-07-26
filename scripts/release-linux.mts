@@ -265,6 +265,15 @@ async function stageReleaseFiles(): Promise<void> {
 			path.join(STAGING_DIRECTORY, `usr/lib/agent-glow/apps/${application}/dist/index.cjs`),
 		);
 	}
+	await cp(
+		path.join(ROOT_DIRECTORY, 'apps/desktop/icon.png'),
+		path.join(STAGING_DIRECTORY, 'usr/lib/agent-glow/apps/desktop/icon.png'),
+	);
+	await cp(
+		path.join(ROOT_DIRECTORY, 'apps/desktop/icons'),
+		path.join(STAGING_DIRECTORY, 'usr/lib/agent-glow/apps/desktop/icons'),
+		{ recursive: true },
+	);
 	await mkdir(path.join(STAGING_DIRECTORY, 'usr/share/licenses/agent-glow'), {
 		recursive: true,
 	});

@@ -1,7 +1,7 @@
 import { Value } from '@sinclair/typebox/value';
 import { describe, expect, it } from 'vitest';
 
-import { RpcRequestSchema } from '../src/rpc.js';
+import { DiagnosticsResultSchema, RpcRequestSchema } from '../src/rpc.js';
 
 describe('RpcRequestSchema', () => {
 	it('accepts every MVP method', () => {
@@ -77,6 +77,17 @@ describe('RpcRequestSchema', () => {
 				method: 'event.clear',
 				params: { source: 'codex', sessionId: 'session-1' },
 			},
+			{
+				jsonrpc: '2.0',
+				id: 16,
+				method: 'event.transition',
+				params: {
+					source: 'codex',
+					sessionId: 'session-1',
+					clearStates: ['working', 'tool_use'],
+					event: { state: 'success', phase: 'pulse', ttlMs: 1500 },
+				},
+			},
 		];
 
 		for (const request of requests) expect(Value.Check(RpcRequestSchema, request)).toBe(true);
@@ -100,6 +111,21 @@ describe('RpcRequestSchema', () => {
 				extra: true,
 			}),
 		).toBe(false);
+	});
+});
+
+describe('DiagnosticsResultSchema', () => {
+	it('requires daemon entry and runtime paths', () => {
+		expect(
+			Value.Check(DiagnosticsResultSchema, {
+				service: {
+					entryPath: '/usr/lib/agent-glow/apps/daemon/dist/index.cjs',
+					runtimePath: '/usr/lib/agent-glow/runtime/bin/node',
+				},
+				backend: { id: 'asusd', health: 'healthy' },
+				devices: [],
+			}),
+		).toBe(true);
 	});
 });
 

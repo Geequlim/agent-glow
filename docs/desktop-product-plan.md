@@ -16,7 +16,7 @@ order: 3
 3. 硬件界面由设备注册信息生成，不按已知设备类型写死。
 4. 服务运行和开机启动由一个总开关统一管理。
 5. 灯光配置只提供恢复默认，不建设预设系统。
-6. 首版 Agent 集成只支持 Codex 和 OpenCode。
+6. Agent 集成支持 Codex、OpenCode 和 ZCode。
 7. 界面使用用户能理解的任务和设备语言，不暴露 daemon 内部状态机概念。
 
 ## 2. 信息架构
@@ -28,7 +28,7 @@ order: 3
 | 概览       | 服务总开关、当前活动、设备与错误摘要、运行诊断与脱敏导出 |
 | 灯光样式   | 各任务阶段的颜色、动画、亮度和时间参数                   |
 | 设备       | 注册驱动的设备信息、独立启用项和动态配置表单             |
-| Agent 集成 | Codex、OpenCode 的检测、安装和移除                       |
+| Agent 集成 | Codex、OpenCode、ZCode 的检测、安装和移除                |
 | 关于       | 版本、项目说明、许可证和链接                             |
 
 宽窗口同时展示导航与内容，窄窗口采用 libadwaita 的标准折叠导航。首版不增加仪表盘、
@@ -99,7 +99,7 @@ order: 3
 
 ## 7. Agent 集成
 
-首版只实现 Codex 和 OpenCode，两者分别维护真实 Hook schema、fixtures 和安装模板。
+当前实现 Codex、OpenCode 和 ZCode，三者分别维护真实 Hook schema、fixtures 和安装模板。
 集成页可以自动检测，但修改 Agent 的外部配置必须：
 
 1. 展示目标文件；

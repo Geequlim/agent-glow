@@ -21,6 +21,7 @@ async function manageDevelopmentService(action: 'install' | 'remove'): Promise<v
 
 	if (action === 'install') {
 		await access(daemonBundle);
+		await runSystemctl(['unmask', 'agent-glow.service']);
 		await mkdir(unitDirectory, { recursive: true, mode: 0o700 });
 		const temporaryPath = `${unitPath}.tmp-${process.pid}`;
 		await writeFile(temporaryPath, createDevelopmentUnit(process.execPath, daemonBundle), {
@@ -34,11 +35,17 @@ async function manageDevelopmentService(action: 'install' | 'remove'): Promise<v
 		return;
 	}
 
+	const loadState = await readSystemctlProperty('LoadState');
+	if (loadState === 'loaded') {
+		await runSystemctl(['disable', '--now', 'agent-glow.service']);
+		console.log('[agent-glow] stopped and disabled AgentGlow service');
+	}
 	await unlink(unitPath).catch((error: unknown) => {
 		if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
 	});
 	await runSystemctlDaemonReload();
-	console.log(`[agent-glow] removed development unit: ${unitPath}`);
+	await runSystemctl(['mask', '--now', '--force', 'agent-glow.service']);
+	console.log(`[agent-glow] removed development unit and masked service: ${unitPath}`);
 }
 
 function createDevelopmentUnit(nodePath: string, daemonBundle: string): string {
@@ -67,15 +74,45 @@ function quoteSystemdArgument(value: string): string {
 }
 
 function runSystemctlDaemonReload(): Promise<void> {
+	return runSystemctl(['daemon-reload']);
+}
+
+function runSystemctl(arguments_: readonly string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('systemctl', ['--user', 'daemon-reload'], {
+		const child = spawn('systemctl', ['--user', ...arguments_], {
 			shell: false,
 			stdio: 'inherit',
 		});
 		child.once('error', reject);
 		child.once('close', (exitCode) => {
 			if (exitCode === 0) resolve();
-			else reject(new Error(`systemctl --user daemon-reload exited ${exitCode ?? 1}`));
+			else
+				reject(
+					new Error(`systemctl --user ${arguments_.join(' ')} exited ${exitCode ?? 1}`),
+				);
+		});
+	});
+}
+
+function readSystemctlProperty(property: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(
+			'systemctl',
+			['--user', 'show', 'agent-glow.service', `--property=${property}`, '--value'],
+			{
+				shell: false,
+				stdio: ['ignore', 'pipe', 'inherit'],
+			},
+		);
+		let output = '';
+		child.stdout.setEncoding('utf8');
+		child.stdout.on('data', (chunk: string) => {
+			output += chunk;
+		});
+		child.once('error', reject);
+		child.once('close', (exitCode) => {
+			if (exitCode === 0) resolve(output.trim());
+			else reject(new Error(`systemctl --user show exited ${exitCode ?? 1}`));
 		});
 	});
 }

@@ -8,6 +8,7 @@ import type {
 	DeviceConfiguration,
 	DeviceConfigurationValue,
 } from '@agent-glow/protocol/device-configuration';
+import type { DiagnosticsResult } from '@agent-glow/protocol/rpc';
 import { makeAutoObservable, runInAction } from 'mobx';
 
 import {
@@ -43,7 +44,7 @@ export const STATE_LABELS: Record<ConfigurableState, string> = {
 };
 
 export interface AgentDetection {
-	readonly id: 'codex' | 'opencode';
+	readonly id: IntegrationId;
 	readonly available: boolean;
 	readonly connected: boolean;
 	readonly targetPath: string;
@@ -116,7 +117,7 @@ export class DesktopState {
 	config: AgentGlowConfig = createDefaultConfig();
 	devices: readonly DeviceDescriptor[] = [];
 	deviceConfigurations = new Map<string, DeviceConfiguration>();
-	diagnostics: unknown;
+	diagnostics: DiagnosticsResult | undefined;
 	agents: readonly AgentDetection[] = [];
 	loading = true;
 	serviceBusy = false;
@@ -174,7 +175,7 @@ export class DesktopState {
 			let daemon: DaemonStatus | undefined;
 			let config: AgentGlowConfig | undefined;
 			let devices: readonly DeviceDescriptor[] = [];
-			let diagnostics: unknown;
+			let diagnostics: DiagnosticsResult | undefined;
 			const configurations = new Map<string, DeviceConfiguration>();
 			if (service.running) {
 				[daemon, config, devices, diagnostics] = await Promise.all([
@@ -319,17 +320,37 @@ async function detectAgents(integrations: IntegrationManager): Promise<readonly 
 	const statuses = await integrations.statuses();
 	return Promise.all(
 		statuses.map(async (status) => {
-			const version = await executableVersion(status.id);
+			const executable = await detectExecutable(status.id);
 			return {
 				id: status.id,
-				available: version !== undefined,
+				available: executable.available,
 				connected: status.installed,
 				targetPath: status.targetPath,
 				updateAvailable: status.updateAvailable,
-				...(version ? { version } : {}),
+				...(executable.version ? { version: executable.version } : {}),
 			};
 		}),
 	);
+}
+
+async function detectExecutable(
+	executable: string,
+): Promise<{ readonly available: boolean; readonly version?: string }> {
+	if (executable === 'zcode') {
+		return { available: await executableExists(executable) };
+	}
+	const version = await executableVersion(executable);
+	return { available: version !== undefined, ...(version ? { version } : {}) };
+}
+
+function executableExists(executable: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		const child = spawn('which', [executable], {
+			stdio: ['ignore', 'ignore', 'ignore'],
+		});
+		child.once('error', () => resolve(false));
+		child.once('close', (code) => resolve(code === 0));
+	});
 }
 
 function executableVersion(executable: string): Promise<string | undefined> {

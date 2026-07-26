@@ -52,11 +52,11 @@ agent-glow service enable
 agent-glow service start
 ```
 
-移除前先显式停止、禁用，再删除开发 unit：
+移除指令不区分服务来源：只要 `agent-glow.service` 存在，就会先停止并禁用它，再删除
+用户目录中的开发 unit 和开发 Desktop Entry，最后 mask 同名服务。即使系统仍安装着正式
+unit，移除后也不能被 `start` 再次启动；重新执行开发安装指令时才会解除 mask：
 
 ```bash
-agent-glow service stop
-agent-glow service disable
 yarn tiny service/remove
 ```
 
@@ -67,7 +67,18 @@ yarn tiny service/remove
 daemon 只向 stdout/stderr 写日志，由用户级 journald 收集：
 
 ```bash
-journalctl --user-unit agent-glow.service -f
+yarn tiny service/start
+```
+
+该指令强制重启当前可用且未被移除的 `agent-glow.service`，立即打印 `FragmentPath`、
+`ExecStart` 和 `MainPID`，然后使用 systemd invocation 过滤持续显示这一次启动产生的
+全部日志，不混入历史进程记录。服务已被移除或系统中没有 unit 时，启动会直接失败。
+
+每次启动的第一行会同时打印 daemon bundle 和 Node runtime 的绝对路径。开发版路径位于
+项目检出目录，正式安装版路径位于 `/usr/lib/agent-glow/`，可以据此直接确认当前服务来源：
+
+```text
+[agent-glow] service source entry=/usr/lib/agent-glow/apps/daemon/dist/index.cjs runtime=/usr/lib/agent-glow/runtime/bin/node
 ```
 
 可重点检查以下记录：

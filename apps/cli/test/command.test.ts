@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createDefaultConfig, stringifyConfigYaml } from '@agent-glow/config';
 
-import { adaptCodexHook, runCli } from '../src/command.js';
+import { adaptCodexHook, adaptLifecycleHook, runCli } from '../src/command.js';
 
 describe('runCli', () => {
 	it('prints help when invoked without arguments', async () => {
@@ -221,7 +221,7 @@ describe('runCli', () => {
 					JSON.stringify({ hook_event_name: 'Stop', session_id: 'codex-session' }),
 			),
 		).toBe(0);
-		expect(calls).toEqual(['event.emit']);
+		expect(calls).toEqual(['event.transition']);
 		expect(output.stderr).toEqual([]);
 	});
 
@@ -260,22 +260,12 @@ describe('runCli', () => {
 		[
 			'PostToolUse',
 			[
-				[
-					'event.clear',
-					{
-						source: 'codex',
-						sessionId: 'codex-session',
-						state: 'waiting_permission',
-					},
-				],
-				[
-					'event.clear',
-					{
-						source: 'codex',
-						sessionId: 'codex-session',
-						state: 'tool_use',
-					},
-				],
+				'event.transition',
+				{
+					source: 'codex',
+					sessionId: 'codex-session',
+					clearStates: ['waiting_permission', 'tool_use'],
+				},
 			],
 		],
 		['SessionEnd', ['event.clear', { source: 'codex', sessionId: 'codex-session' }]],
@@ -291,7 +281,7 @@ describe('runCli', () => {
 				return {};
 			},
 		);
-		expect(calls).toEqual(hookEventName === 'PostToolUse' ? expectedCall : [expectedCall]);
+		expect(calls).toEqual([expectedCall]);
 	});
 
 	it('maps Codex PreToolUse to tool use after clearing permission', async () => {
@@ -306,20 +296,12 @@ describe('runCli', () => {
 
 		expect(calls).toEqual([
 			[
-				'event.clear',
+				'event.transition',
 				{
 					source: 'codex',
 					sessionId: 'codex-session',
-					state: 'waiting_permission',
-				},
-			],
-			[
-				'event.emit',
-				{
+					clearStates: ['waiting_permission'],
 					event: {
-						version: 1,
-						source: 'codex',
-						sessionId: 'codex-session',
 						state: 'tool_use',
 						phase: 'enter',
 					},
@@ -340,20 +322,49 @@ describe('runCli', () => {
 
 		expect(calls).toEqual([
 			[
-				'event.emit',
+				'event.transition',
 				{
+					source: 'codex',
+					sessionId: 'codex-session',
+					clearStates: ['waiting_permission', 'tool_use', 'working'],
 					event: {
-						version: 1,
-						source: 'codex',
-						sessionId: 'codex-session',
 						state: 'success',
 						phase: 'pulse',
 						ttlMs: 1500,
 					},
 				},
 			],
-			['event.clear', { source: 'codex', sessionId: 'codex-session', state: 'tool_use' }],
-			['event.clear', { source: 'codex', sessionId: 'codex-session', state: 'working' }],
+		]);
+	});
+
+	it('adapts ZCode tool failures with an isolated source', async () => {
+		const calls: unknown[][] = [];
+		await adaptLifecycleHook(
+			JSON.stringify({
+				hook_event_name: 'PostToolUseFailure',
+				session_id: 'zcode-session',
+			}),
+			'zcode',
+			async (method, params) => {
+				calls.push([method, params]);
+				return {};
+			},
+		);
+
+		expect(calls).toEqual([
+			[
+				'event.transition',
+				{
+					source: 'zcode',
+					sessionId: 'zcode-session',
+					clearStates: ['waiting_permission', 'tool_use'],
+					event: {
+						state: 'error',
+						phase: 'pulse',
+						ttlMs: 2000,
+					},
+				},
+			],
 		]);
 	});
 });

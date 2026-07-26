@@ -2,7 +2,7 @@
 
 面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成。首个生产 backend 通过 `asusd` 支持 ROG Aura 与 Slash，后续可以接入外置 RGB 灯等其他设备。
 
-项目目前已完成 P6 Desktop、P7 Codex/OpenCode 接入，以及 P8 的 Linux/AUR
+项目目前已完成 P6 Desktop、P7 Codex/OpenCode/ZCode 接入，以及 P8 的 Linux/AUR
 打包发布工具；正式发布前仍需完成干净环境安装和硬件验收。详细设计、当前进度与实施顺序见：
 
 - [技术规划](docs/technical-plan.md)
@@ -55,7 +55,7 @@ yarn tiny desktop
 服务会重启，未运行的服务不会被擅自启用。随后打开 GTK4/libadwaita 桌面窗口。
 
 窗口提供概览与单一服务开关、自动生效的灯光样式、独立实时预览、注册驱动的设备
-配置、Codex/OpenCode 接入、合并在概览中的诊断能力和关于页。Agent 外部配置只有在展示目标文件和 diff
+配置、Codex/OpenCode/ZCode 接入、合并在概览中的诊断能力和关于页。Agent 外部配置只有在展示目标文件和 diff
 并由用户确认后才会写入。
 
 ## P1 可构建入口（历史基线）
@@ -201,7 +201,11 @@ yarn tiny linux/build
 
 ```bash
 yarn tiny aur/build
+sudo pacman -U dist/release/agent-glow-bin-0.1.1-1-x86_64.pkg.tar.zst
 ```
+
+pacman 包统一输出到 `dist/release/` 根目录，文件名由版本、`pkgrel` 和架构唯一确定。
+同一版本重复构建会覆盖同一路径，不会在其他目录留下另一个同名安装包。
 
 发布 GitHub Release，或继续发布 AUR：
 

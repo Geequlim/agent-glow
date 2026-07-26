@@ -7,7 +7,7 @@ import type {
 	DeviceConfiguration,
 	DeviceConfigurationValues,
 } from '@agent-glow/protocol/device-configuration';
-import type { PreviewFrameResult } from '@agent-glow/protocol/rpc';
+import type { DiagnosticsResult, PreviewFrameResult } from '@agent-glow/protocol/rpc';
 
 import { resolveSocketPath } from './socket-path.js';
 
@@ -28,7 +28,7 @@ export interface AgentGlowRpcClient {
 		deviceId: string,
 		values: DeviceConfigurationValues,
 	): Promise<DeviceConfiguration>;
-	getDiagnostics(): Promise<unknown>;
+	getDiagnostics(): Promise<DiagnosticsResult>;
 	startPreview(state: string): Promise<void>;
 	updatePreview(state: string): Promise<void>;
 	stopPreview(): Promise<void>;
@@ -89,8 +89,8 @@ export class SocketAgentGlowRpcClient implements AgentGlowRpcClient {
 		})) as DeviceConfiguration;
 	}
 
-	getDiagnostics(): Promise<unknown> {
-		return request(this.#socketPath, 'diagnostics.get', {});
+	async getDiagnostics(): Promise<DiagnosticsResult> {
+		return (await request(this.#socketPath, 'diagnostics.get', {})) as DiagnosticsResult;
 	}
 
 	async startPreview(state: string): Promise<void> {

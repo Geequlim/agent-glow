@@ -397,6 +397,7 @@ $XDG_RUNTIME_DIR/agent-glow/daemon.sock
 | `device.config.update` | 校验并更新设备运行时配置                 |
 | `event.emit`           | 提交标准语义事件                         |
 | `event.clear`          | 清理来源或会话租约                       |
+| `event.transition`     | 原子清理旧租约并提交新的语义事件         |
 | `state.listActive`     | 查看当前活动租约与仲裁结果               |
 | `profile.list`         | 获取状态主题                             |
 | `config.get`           | 读取当前配置                             |

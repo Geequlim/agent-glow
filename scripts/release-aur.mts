@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -122,7 +122,10 @@ async function buildAurPackage(): Promise<void> {
 	await run('makepkg', ['--nodeps', '--cleanbuild', '--force'], {
 		cwd: GENERATED_AUR_DIRECTORY,
 	});
-	console.log(`\n已生成 ${path.relative(ROOT_DIRECTORY, packageList.trim())}`);
+	const packagePath = packageList.trim();
+	const releasePackagePath = path.join(RELEASE_DIRECTORY, path.basename(packagePath));
+	await rename(packagePath, releasePackagePath);
+	console.log(`\n已生成 ${path.relative(ROOT_DIRECTORY, releasePackagePath)}`);
 }
 
 async function publishAur(): Promise<void> {

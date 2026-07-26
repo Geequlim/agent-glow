@@ -1,6 +1,6 @@
 ---
 title: Agent 生命周期能力矩阵
-description: Codex、Claude Code 与 OpenCode 当前可观测生命周期及 AgentGlow 映射约束
+description: Codex、Claude Code、OpenCode 与 ZCode 当前可观测生命周期及 AgentGlow 映射约束
 order: 1
 ---
 
@@ -8,29 +8,30 @@ order: 1
 
 核对日期：2026-07-26。
 
-本页保留早期对三个 Agent 的能力调研，作为未来扩展参考。首版产品范围只实现 Codex
-和 OpenCode；Claude Code 不进入当前路线图、界面或验收门槛。
+本页记录四个 Agent 的能力调研。当前产品实现 Codex、OpenCode 和 ZCode；Claude Code
+不进入当前路线图、界面或验收门槛。
 
 ## 1. 验证来源
 
 - Codex：本机 `codex-cli 0.145.0` 与 [OpenAI Codex Hooks 文档](https://learn.chatgpt.com/docs/hooks)
 - Claude Code：[官方 Hooks Reference](https://code.claude.com/docs/en/hooks)
 - OpenCode：本机 `1.18.5` 与 [官方 Plugins 文档](https://opencode.ai/docs/plugins/)
+- ZCode：本机 `3.4.2` 内置 Hook 配置指南、运行时 schema 与[官方插件文档](https://zcode.z.ai/cn/docs/plugin)
 
 本机没有安装 Claude Code，因此 Claude Code 目前只有官方契约结论，没有本机 payload fixture。
 
 ## 2. 能力对比
 
-| 语义          | Codex                        | Claude Code                                         | OpenCode                                     |
-| ------------- | ---------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| 会话开始      | `SessionStart`               | `SessionStart`                                      | `session.created`                            |
-| 开始处理      | `UserPromptSubmit`           | `UserPromptSubmit`                                  | `session.status` 的 `busy`                   |
-| 工具开始/结束 | `PreToolUse` / `PostToolUse` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | `tool.execute.before` / `tool.execute.after` |
-| 请求授权      | `PermissionRequest`          | `PermissionRequest`                                 | `permission.asked`                           |
-| 授权结果      | 没有独立“用户已回答”事件     | `PermissionDenied`，允许后进入工具事件              | `permission.replied`                         |
-| 正常停止      | `Stop`                       | `Stop`                                              | `session.idle`                               |
-| 失败          | 没有通用 turn failure Hook   | `StopFailure`、`PostToolUseFailure`                 | `session.error`                              |
-| 会话结束      | `SessionEnd`                 | `SessionEnd`                                        | `session.deleted`                            |
+| 语义          | Codex                        | Claude Code                                         | OpenCode                                     | ZCode                                         |
+| ------------- | ---------------------------- | --------------------------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| 会话开始      | `SessionStart`               | `SessionStart`                                      | `session.created`                            | `SessionStart`                                |
+| 开始处理      | `UserPromptSubmit`           | `UserPromptSubmit`                                  | `session.status` 的 `busy`                   | `UserPromptSubmit`                            |
+| 工具开始/结束 | `PreToolUse` / `PostToolUse` | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | `tool.execute.before` / `tool.execute.after` | `PreToolUse` / `PostToolUse`                  |
+| 请求授权      | `PermissionRequest`          | `PermissionRequest`                                 | `permission.asked`                           | `PermissionRequest`                           |
+| 授权结果      | 没有独立“用户已回答”事件     | `PermissionDenied`，允许后进入工具事件              | `permission.replied`                         | 没有独立事件，允许后进入工具事件              |
+| 正常停止      | `Stop`                       | `Stop`                                              | `session.idle`                               | `Stop`                                        |
+| 失败          | 没有通用 turn failure Hook   | `StopFailure`、`PostToolUseFailure`                 | `session.error`                              | `PostToolUseFailure`，没有通用 turn failure   |
+| 会话结束      | `SessionEnd`                 | `SessionEnd`                                        | `session.deleted`                            | 没有独立事件                                  |
 
 ## 3. 推荐映射
 
@@ -76,6 +77,22 @@ OpenCode 应采用 TypeScript plugin，而不是 stdin command Hook：
 不能把 `message.updated` 当作任务开始：它是消息内容更新通知，在子 Agent 和会话收尾
 期间可能重复或与 idle 交错，容易在完成后重新创建陈旧的 working 租约。
 
+### ZCode
+
+- `SessionStart` → 清理同 session 的残留租约
+- `UserPromptSubmit` → `working enter`
+- `PermissionRequest` → `waiting_permission pulse`，使用短 TTL
+- `PreToolUse` → 清理授权提示并进入 `tool_use`
+- `PostToolUse` → 释放 `tool_use`
+- `PostToolUseFailure` → `error pulse` 并释放 `tool_use`
+- `Stop` → `success pulse` 并释放 `working`
+
+ZCode 配置型 Hook 位于 `~/.zcode/cli/config.json` 的 `hooks.events`，必须设置
+`hooks.enabled: true`。它的 stdin payload 使用 `hook_event_name` 和 `session_id`，
+因此与 Codex 共用解析核心，但保留独立来源和独立安装 schema。涉及多个租约变化的
+Hook 使用一次 `event.transition` 原子提交，避免真实硬件响应超过客户端等待时间时只
+完成一半清理。
+
 ## 4. 当前实现
 
 - Codex 通过 `agent-glow adapt codex` 读取官方 Hook stdin payload；daemon 不可用、
@@ -84,7 +101,9 @@ OpenCode 应采用 TypeScript plugin，而不是 stdin command Hook：
   升级和移除通过 AgentGlow 标记识别旧命令。
 - OpenCode 通过 `~/.config/opencode/plugins/agent-glow.js` 全局插件接入，直接使用
   200 ms 有界 Unix Socket RPC。
-- 两种接入都必须先在 Desktop 查看目标文件和 diff，再明确确认；写入前会重新核对
+- ZCode 通过 `agent-glow adapt zcode` 读取原生 Hook stdin payload，并由 Desktop
+  合并到 `~/.zcode/cli/config.json`。
+- 三种接入都必须先在 Desktop 查看目标文件和 diff，再明确确认；写入前会重新核对
   文件内容，避免覆盖确认期间发生的外部修改。
 - OpenCode 目标文件若已存在但不是 AgentGlow 生成，安装器拒绝覆盖或删除。
 
@@ -94,4 +113,4 @@ OpenCode 应采用 TypeScript plugin，而不是 stdin command Hook：
 - 所有 Hook/插件调用必须在 daemon 不可用时快速失败。
 - session ID 必须来自来源事件；缺失时使用短 TTL，不创建永久租约。
 - 不根据自然语言输出猜测 `success` 或 `error`。
-- 三类来源分别维护 schema 和 fixtures，不伪造统一的上游 Hook 格式。
+- 各类来源分别维护 schema 和 fixtures，不伪造统一的上游 Hook 格式。

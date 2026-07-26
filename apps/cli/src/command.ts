@@ -144,8 +144,9 @@ export async function runCli(
 		.description('Adapt an Agent lifecycle hook from stdin')
 		.argument('<agent>', 'Agent adapter')
 		.action(async (agent: string) => {
-			if (agent !== 'codex') throw new Error(`Unsupported Agent adapter: ${agent}`);
-			await adaptCodexHook(await readStdin(), request);
+			if (agent !== 'codex' && agent !== 'zcode')
+				throw new Error(`Unsupported Agent adapter: ${agent}`);
+			await adaptLifecycleHook(await readStdin(), agent, request);
 		});
 
 	program
@@ -262,6 +263,14 @@ function parseConfigurationValue(value: string): string | number | boolean {
 }
 
 export async function adaptCodexHook(source: string, request: RpcRequestFunction): Promise<void> {
+	return adaptLifecycleHook(source, 'codex', request);
+}
+
+export async function adaptLifecycleHook(
+	source: string,
+	agent: 'codex' | 'zcode',
+	request: RpcRequestFunction,
+): Promise<void> {
 	let payload: unknown;
 	try {
 		payload = JSON.parse(source);
@@ -288,7 +297,7 @@ export async function adaptCodexHook(source: string, request: RpcRequestFunction
 		request('event.emit', {
 			event: {
 				version: 1,
-				source: 'codex',
+				source: agent,
 				sessionId,
 				state,
 				phase,
@@ -297,9 +306,23 @@ export async function adaptCodexHook(source: string, request: RpcRequestFunction
 		});
 	const clear = (state?: string): Promise<unknown> =>
 		request('event.clear', {
-			source: 'codex',
+			source: agent,
 			sessionId,
 			...(state ? { state } : {}),
+		});
+	const transition = (
+		clearStates: readonly string[],
+		event?: {
+			readonly state: 'tool_use' | 'success' | 'error';
+			readonly phase: 'enter' | 'pulse';
+			readonly ttlMs?: number;
+		},
+	): Promise<unknown> =>
+		request('event.transition', {
+			source: agent,
+			sessionId,
+			clearStates,
+			...(event ? { event } : {}),
 		});
 	try {
 		switch (payload.hook_event_name) {
@@ -310,19 +333,30 @@ export async function adaptCodexHook(source: string, request: RpcRequestFunction
 				await emit('waiting_permission', 'pulse', 20_000);
 				break;
 			case 'PreToolUse':
-				await clear('waiting_permission');
-				await emit('tool_use', 'enter');
+				await transition(['waiting_permission'], {
+					state: 'tool_use',
+					phase: 'enter',
+				});
 				break;
 			case 'PostToolUse':
-				await clear('waiting_permission');
-				await clear('tool_use');
+				await transition(['waiting_permission', 'tool_use']);
+				break;
+			case 'PostToolUseFailure':
+				await transition(['waiting_permission', 'tool_use'], {
+					state: 'error',
+					phase: 'pulse',
+					ttlMs: 2000,
+				});
 				break;
 			case 'Stop':
-				await emit('success', 'pulse', 1500);
-				await clear('tool_use');
-				await clear('working');
+				await transition(['waiting_permission', 'tool_use', 'working'], {
+					state: 'success',
+					phase: 'pulse',
+					ttlMs: 1500,
+				});
 				break;
 			case 'SessionEnd':
+			case 'SessionStart':
 				await clear();
 				break;
 		}

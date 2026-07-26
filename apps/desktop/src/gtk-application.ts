@@ -16,7 +16,7 @@ import {
 	type ConfigurableState,
 } from './desktop-state.js';
 import { Adw, Gdk, Gio, Gtk } from './gtk.js';
-import type { IntegrationPlan } from './integration-manager.js';
+import type { IntegrationId, IntegrationPlan } from './integration-manager.js';
 import type { AgentGlowRpcClient } from './rpc-client.js';
 import { SocketAgentGlowRpcClient } from './rpc-client.js';
 
@@ -157,6 +157,7 @@ function createOverviewPage(
 	const deviceRow = new Adw.ActionRow({ title: '已发现设备' });
 	const saveRow = new Adw.ActionRow({ title: '配置状态' });
 	const backendRow = new Adw.ActionRow({ title: 'Backend' });
+	const serviceEntryRow = new Adw.ActionRow({ title: '服务端程序' });
 	const diagnosticRow = new Adw.ActionRow({ title: '诊断摘要' });
 	const journalRow = new Adw.ActionRow({
 		title: '服务日志',
@@ -220,6 +221,7 @@ function createOverviewPage(
 			});
 	});
 	const diagnosticsGroup = new Adw.PreferencesGroup({ title: '诊断' });
+	diagnosticsGroup.add(serviceEntryRow);
 	diagnosticsGroup.add(backendRow);
 	diagnosticsGroup.add(diagnosticRow);
 	diagnosticsGroup.add(journalRow);
@@ -249,9 +251,8 @@ function createOverviewPage(
 				: state.lastSavedAt
 					? '已自动应用'
 					: '已加载';
-			const diagnostics = state.diagnostics as
-				| { readonly backend?: { readonly id?: string; readonly health?: string } }
-				| undefined;
+			const diagnostics = state.diagnostics;
+			serviceEntryRow.subtitle = diagnostics?.service.entryPath ?? '服务未连接';
 			backendRow.subtitle = diagnostics?.backend
 				? `${diagnostics.backend.id ?? 'unknown'} · ${diagnostics.backend.health ?? 'unknown'}`
 				: '服务未连接';
@@ -499,6 +500,22 @@ function createDevicesPage(
 					title: device.name,
 					description: '设备信息',
 				});
+				const enabledSetting = configuration?.settings.find(
+					(setting) => setting.key === 'enabled',
+				);
+				if (enabledSetting)
+					information.add(
+						createDeviceSettingRow(
+							enabledSetting,
+							configuration?.values[enabledSetting.key],
+							(value) =>
+								void state.updateDeviceSetting(
+									device.id,
+									enabledSetting.key,
+									value,
+								),
+						),
+					);
 				if (device.description)
 					information.add(
 						new Adw.ActionRow({ title: '设备说明', subtitle: device.description }),
@@ -520,7 +537,7 @@ function createDevicesPage(
 				groups.push(information);
 				if (configuration) {
 					const settingsByGroup = Map.groupBy(
-						configuration.settings,
+						configuration.settings.filter((setting) => setting.key !== 'enabled'),
 						(setting) => setting.group ?? '设备设置',
 					);
 					for (const [groupLabel, settings] of settingsByGroup) {
@@ -605,14 +622,18 @@ function createAgentsPage(
 	});
 	const codex = new Adw.ActionRow({ title: 'Codex' });
 	const opencode = new Adw.ActionRow({ title: 'OpenCode' });
+	const zcode = new Adw.ActionRow({ title: 'ZCode' });
 	const codexButton = new Gtk.Button({ valign: Gtk.Align.CENTER });
 	const openCodeButton = new Gtk.Button({ valign: Gtk.Align.CENTER });
+	const zcodeButton = new Gtk.Button({ valign: Gtk.Align.CENTER });
 	codex.addSuffix(codexButton);
 	opencode.addSuffix(openCodeButton);
-	const openPlan = (id: 'codex' | 'opencode'): void => {
+	zcode.addSuffix(zcodeButton);
+	const openPlan = (id: IntegrationId): void => {
 		const detection = state.agents.find((agent) => agent.id === id);
 		const action = detection?.updateAvailable || !detection?.connected ? 'install' : 'remove';
-		const button = id === 'codex' ? codexButton : openCodeButton;
+		const button =
+			id === 'codex' ? codexButton : id === 'opencode' ? openCodeButton : zcodeButton;
 		button.sensitive = false;
 		button.label = '正在读取…';
 		void state
@@ -628,17 +649,21 @@ function createAgentsPage(
 	};
 	codexButton.on('clicked', () => openPlan('codex'));
 	openCodeButton.on('clicked', () => openPlan('opencode'));
+	zcodeButton.on('clicked', () => openPlan('zcode'));
 	group.add(codex);
 	group.add(opencode);
+	group.add(zcode);
 	page.add(group);
 	disposers.push(
 		autorun(() => {
 			for (const [id, row] of [
 				['codex', codex],
 				['opencode', opencode],
+				['zcode', zcode],
 			] as const) {
 				const detection = state.agents.find((agent) => agent.id === id);
-				const button = id === 'codex' ? codexButton : openCodeButton;
+				const button =
+					id === 'codex' ? codexButton : id === 'opencode' ? openCodeButton : zcodeButton;
 				button.label = integrationButtonLabel(detection);
 				button.sensitive = detection?.available ?? false;
 				row.subtitle = detection?.available
@@ -647,7 +672,9 @@ function createAgentsPage(
 							? '发现 AgentGlow 接入更新'
 							: id === 'codex'
 								? `已写入 Hook · 请在 Codex /hooks 中检查信任状态`
-								: '已安装全局插件 · 重启 OpenCode 后生效'
+								: id === 'opencode'
+									? '已安装全局插件 · 重启 OpenCode 后生效'
+									: '已写入用户级 Hook · 新会话生效'
 						: `已检测到${detection.version ? ` · ${detection.version}` : ''}`
 					: '未检测到可执行程序';
 			}

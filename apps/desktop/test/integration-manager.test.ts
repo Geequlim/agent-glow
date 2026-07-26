@@ -9,6 +9,7 @@ import {
 	createOpenCodePlugin,
 	IntegrationManager,
 	updateCodexHooks,
+	updateZcodeHooks,
 } from '../src/integration-manager.js';
 
 const temporaryDirectories: string[] = [];
@@ -71,18 +72,98 @@ describe('updateCodexHooks', () => {
 	});
 });
 
+describe('updateZcodeHooks', () => {
+	it('preserves existing settings and installs one process hook for every ZCode event', () => {
+		const source = JSON.stringify({
+			ui: { locale: 'zh-CN' },
+			hooks: {
+				enabled: false,
+				events: {
+					PreToolUse: [{ hooks: [{ type: 'command', command: 'other-hook' }] }],
+				},
+			},
+		});
+
+		const once = updateZcodeHooks(
+			source,
+			'/usr/bin/node',
+			'/opt/agent glow/cli.cjs',
+			'install',
+		);
+		const twice = updateZcodeHooks(once, '/usr/bin/node', '/opt/agent glow/cli.cjs', 'install');
+		const parsed = JSON.parse(twice);
+
+		expect(parsed.ui).toEqual({ locale: 'zh-CN' });
+		expect(parsed.hooks.enabled).toBe(true);
+		expect(parsed.hooks.events.PreToolUse).toHaveLength(2);
+		expect(twice.match(/AgentGlow integration/gu)).toHaveLength(7);
+		expect(parsed.hooks.events.Stop[0].hooks[0]).toEqual({
+			type: 'process',
+			command: '/usr/bin/node',
+			args: ['/opt/agent glow/cli.cjs', 'adapt', 'zcode'],
+			timeoutMs: 2000,
+			statusMessage: 'AgentGlow integration',
+		});
+	});
+
+	it('removes only AgentGlow hooks and leaves ZCode hooks enabled', () => {
+		const installed = updateZcodeHooks(
+			JSON.stringify({
+				hooks: {
+					events: {
+						Stop: [{ hooks: [{ type: 'command', command: 'other-hook' }] }],
+					},
+				},
+			}),
+			'/usr/bin/node',
+			'/opt/agent-glow/cli.cjs',
+			'install',
+		);
+		const removed = JSON.parse(
+			updateZcodeHooks(installed, '/usr/bin/node', '/opt/agent-glow/cli.cjs', 'remove'),
+		);
+
+		expect(removed.hooks.enabled).toBe(true);
+		expect(removed.hooks.events.Stop).toEqual([
+			{ hooks: [{ type: 'command', command: 'other-hook' }] },
+		]);
+		expect(JSON.stringify(removed)).not.toContain('AgentGlow integration');
+	});
+
+	it('upgrades an older AgentGlow process command without duplicating it', () => {
+		const oldConfiguration = updateZcodeHooks(
+			'',
+			'/old/node',
+			'/old/agent-glow.cjs',
+			'install',
+		);
+		const upgraded = updateZcodeHooks(
+			oldConfiguration,
+			'/usr/bin/node',
+			'/new/agent-glow.cjs',
+			'install',
+		);
+
+		expect(upgraded).not.toContain('/old/agent-glow.cjs');
+		expect(upgraded.match(/AgentGlow integration/gu)).toHaveLength(7);
+		expect(upgraded.match(/\/new\/agent-glow\.cjs/gu)).toHaveLength(7);
+	});
+});
+
 describe('IntegrationManager', () => {
-	it('previews and atomically applies both integrations in isolated paths', async () => {
+	it('previews and atomically applies all integrations in isolated paths', async () => {
 		const root = await createTemporaryDirectory();
 		const codexHooksPath = path.join(root, 'codex', 'hooks.json');
 		const openCodePluginPath = path.join(root, 'opencode', 'agent-glow.js');
+		const zcodeConfigPath = path.join(root, 'zcode', 'config.json');
 		const manager = new IntegrationManager('/opt/agent glow/cli.cjs', {
 			codexHooksPath,
 			nodePath: '/usr/bin/node',
 			openCodePluginPath,
+			zcodeConfigPath,
 		});
 
-		for (const id of ['codex', 'opencode'] as const) {
+		for (const id of ['codex', 'opencode', 'zcode'] as const) {
 			const plan = await manager.plan(id, 'install');
 			expect(plan.before).toBe('');
 			expect(plan.diff).toContain('+++ 修改后');
@@ -102,11 +183,18 @@ describe('IntegrationManager', () => {
 				targetPath: openCodePluginPath,
 				updateAvailable: false,
 			},
+			{
+				id: 'zcode',
+				installed: true,
+				targetPath: zcodeConfigPath,
+				updateAvailable: false,
+			},
 		]);
 		expect(await readFile(codexHooksPath, 'utf8')).toContain(
 			"'/usr/bin/node' '/opt/agent glow/cli.cjs' adapt codex",
 		);
 		expect(await readFile(openCodePluginPath, 'utf8')).toBe(createOpenCodePlugin());
+		expect(await readFile(zcodeConfigPath, 'utf8')).toContain('"/opt/agent glow/cli.cjs"');
 	});
 
 	it('rejects applying a stale preview', async () => {

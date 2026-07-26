@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import packageMetadata from '../package.json';
 
 import { runDaemonCli } from './command.js';
@@ -15,6 +17,8 @@ process.exitCode = runDaemonCli(
 
 function startDaemonScaffold(): void {
 	let stopping = false;
+	const serviceEntry = process.argv[1] ? path.resolve(process.argv[1]) : 'unknown';
+	console.log(`[agent-glow] service source entry=${serviceEntry} runtime=${process.execPath}`);
 
 	void startDaemonServer(packageMetadata.version)
 		.then((daemon) => {

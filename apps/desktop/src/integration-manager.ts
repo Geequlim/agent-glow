@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-export type IntegrationId = 'codex' | 'opencode';
+export type IntegrationId = 'codex' | 'opencode' | 'zcode';
 export type IntegrationAction = 'install' | 'remove';
 
 export interface IntegrationPlan {
@@ -29,11 +29,21 @@ const CODEX_EVENTS = [
 	'Stop',
 	'SessionEnd',
 ] as const;
+const ZCODE_EVENTS = [
+	'SessionStart',
+	'UserPromptSubmit',
+	'PreToolUse',
+	'PermissionRequest',
+	'PostToolUse',
+	'PostToolUseFailure',
+	'Stop',
+] as const;
 const MARKER = 'AgentGlow integration';
 
 export class IntegrationManager {
 	readonly #codexHooksPath: string;
 	readonly #openCodePluginPath: string;
+	readonly #zcodeConfigPath: string;
 	readonly #cliPath: string;
 	readonly #nodePath: string;
 
@@ -43,6 +53,7 @@ export class IntegrationManager {
 			readonly codexHooksPath?: string;
 			readonly nodePath?: string;
 			readonly openCodePluginPath?: string;
+			readonly zcodeConfigPath?: string;
 		} = {},
 	) {
 		this.#cliPath = cliPath;
@@ -52,13 +63,17 @@ export class IntegrationManager {
 		this.#openCodePluginPath =
 			options.openCodePluginPath ??
 			path.join(homedir(), '.config', 'opencode', 'plugins', 'agent-glow.js');
+		this.#zcodeConfigPath =
+			options.zcodeConfigPath ?? path.join(homedir(), '.zcode', 'cli', 'config.json');
 	}
 
 	async statuses(): Promise<readonly IntegrationStatus[]> {
 		const codex = await readOptional(this.#codexHooksPath);
 		const openCode = await readOptional(this.#openCodePluginPath);
+		const zcode = await readOptional(this.#zcodeConfigPath);
 		const codexInstalled = codex ? containsAgentGlowHookDocument(codex) : false;
 		const openCodeInstalled = openCode?.includes(MARKER) ?? false;
+		const zcodeInstalled = zcode ? containsAgentGlowZcodeDocument(zcode) : false;
 		return [
 			{
 				id: 'codex',
@@ -74,11 +89,26 @@ export class IntegrationManager {
 				targetPath: this.#openCodePluginPath,
 				updateAvailable: openCodeInstalled && openCode !== createOpenCodePlugin(),
 			},
+			{
+				id: 'zcode',
+				installed: zcodeInstalled,
+				targetPath: this.#zcodeConfigPath,
+				updateAvailable:
+					zcodeInstalled &&
+					(!zcode ||
+						updateZcodeHooks(zcode, this.#nodePath, this.#cliPath, 'install') !==
+							zcode),
+			},
 		];
 	}
 
 	async plan(id: IntegrationId, action: IntegrationAction): Promise<IntegrationPlan> {
-		const targetPath = id === 'codex' ? this.#codexHooksPath : this.#openCodePluginPath;
+		const targetPath =
+			id === 'codex'
+				? this.#codexHooksPath
+				: id === 'opencode'
+					? this.#openCodePluginPath
+					: this.#zcodeConfigPath;
 		const before = (await readOptional(targetPath)) ?? '';
 		if (id === 'opencode' && before && !before.includes(MARKER)) {
 			throw new Error('目标文件不是 AgentGlow 生成的 OpenCode 插件，拒绝覆盖或删除。');
@@ -86,9 +116,11 @@ export class IntegrationManager {
 		const after =
 			id === 'codex'
 				? updateCodexHooks(before, this.#codexCommand(), action)
-				: action === 'install'
-					? createOpenCodePlugin()
-					: '';
+				: id === 'opencode'
+					? action === 'install'
+						? createOpenCodePlugin()
+						: ''
+					: updateZcodeHooks(before, this.#nodePath, this.#cliPath, action);
 		return {
 			id,
 			action,
@@ -119,6 +151,46 @@ export class IntegrationManager {
 	#codexCommand(): string {
 		return `${shellQuote(this.#nodePath)} ${shellQuote(this.#cliPath)} adapt codex`;
 	}
+}
+
+export function updateZcodeHooks(
+	source: string,
+	nodePath: string,
+	cliPath: string,
+	action: IntegrationAction,
+): string {
+	const document = source.trim() ? (JSON.parse(source) as Record<string, unknown>) : {};
+	const hooks =
+		document.hooks && typeof document.hooks === 'object'
+			? (document.hooks as Record<string, unknown>)
+			: {};
+	const events =
+		hooks.events && typeof hooks.events === 'object'
+			? (hooks.events as Record<string, unknown>)
+			: {};
+	for (const event of ZCODE_EVENTS) {
+		const groups = Array.isArray(events[event]) ? [...events[event]] : [];
+		const filtered = groups.filter((group) => !containsAgentGlowHandler(group, ''));
+		if (action === 'install') {
+			filtered.push({
+				hooks: [
+					{
+						type: 'process',
+						command: nodePath,
+						args: [cliPath, 'adapt', 'zcode'],
+						timeoutMs: 2000,
+						statusMessage: MARKER,
+					},
+				],
+			});
+		}
+		if (filtered.length > 0) events[event] = filtered;
+		else delete events[event];
+	}
+	if (action === 'install') hooks.enabled = true;
+	hooks.events = events;
+	document.hooks = hooks;
+	return `${JSON.stringify(document, null, 2)}\n`;
 }
 
 export function updateCodexHooks(
@@ -285,7 +357,7 @@ function containsAgentGlowHandler(value: unknown, command: string): boolean {
 			(handler) =>
 				handler &&
 				typeof handler === 'object' &&
-				(('command' in handler && handler.command === command) ||
+				((Boolean(command) && 'command' in handler && handler.command === command) ||
 					('statusMessage' in handler && handler.statusMessage === MARKER)),
 		)
 	);
@@ -295,6 +367,21 @@ function containsAgentGlowHookDocument(source: string): boolean {
 	try {
 		const document = JSON.parse(source) as { readonly hooks?: Record<string, unknown> };
 		return Object.values(document.hooks ?? {}).some(
+			(groups) =>
+				Array.isArray(groups) &&
+				groups.some((group) => containsAgentGlowHandler(group, '')),
+		);
+	} catch {
+		return false;
+	}
+}
+
+function containsAgentGlowZcodeDocument(source: string): boolean {
+	try {
+		const document = JSON.parse(source) as {
+			readonly hooks?: { readonly events?: Record<string, unknown> };
+		};
+		return Object.values(document.hooks?.events ?? {}).some(
 			(groups) =>
 				Array.isArray(groups) &&
 				groups.some((group) => containsAgentGlowHandler(group, '')),
