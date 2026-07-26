@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
+		"@agent-glow/config": "workspace:^",
 		"@agent-glow/protocol": "workspace:^",
 		"commander": "15.0.0"
 	},

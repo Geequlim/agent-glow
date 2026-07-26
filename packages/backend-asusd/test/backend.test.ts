@@ -238,7 +238,10 @@ describe('AsusdLightingBackend', () => {
 
 		const configuration = await backend.getDeviceConfiguration(device.id);
 
-		expect(configuration.settings).toHaveLength(18);
+		expect(configuration.settings).toHaveLength(15);
+		expect(
+			configuration.settings.some((setting) => setting.key.startsWith('states.idle.')),
+		).toBe(false);
 		expect(
 			configuration.settings.find((setting) => setting.key === 'states.working.effect'),
 		).toMatchObject({

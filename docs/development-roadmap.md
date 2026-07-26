@@ -197,10 +197,10 @@ CLI → Unix Socket → JSON-RPC → 租约仲裁 → fake backend
   `Interval`、`Mode`。
 - [x] 从 Slash 已确认动画中选择与语义直接相关的最小子集，不在通用协议中暴露
   ROG 模式编号，也不为测试轮播全部枚举。
-- [x] 用正常六状态硬件冒烟测试验证语义映射、亮度、间隔和完整恢复。
+- [x] 用五种主动状态及 idle 快照恢复的硬件冒烟测试验证语义映射、亮度、间隔和完整恢复。
 - [x] 实现能力降级结果，让 CLI 和 diagnostics 能看到“请求效果”和“实际效果”。
 - [x] 允许设备实现通过 TypeBox 通用描述注册运行时配置项，并由 daemon 统一校验；
-  Slash 首批注册六种语义状态的动画、亮度和间隔。
+  Slash 为五种主动语义状态注册动画、亮度和间隔；`idle` 恢复系统快照。
 - [x] daemon 启动时保存快照，正常停止时恢复。
 - [x] 一个设备失败时隔离错误，不停止其他设备。
 - [x] 保留 fake backend。
@@ -212,7 +212,7 @@ CLI → Unix Socket → JSON-RPC → 租约仲裁 → fake backend
 - protocol、core、通用 RPC 和 profile schema 中没有 asusd、Aura 或 Slash 类型。
 - `idle → working → idle` 可以通过 CLI 驱动真实设备。
 - Slash 不支持颜色时返回明确降级信息。
-- Slash 能随语义状态切换已验证的固件动画、间隔和亮度，而不是只切换开关。
+- Slash 能随主动语义状态切换已验证的固件动画、间隔和亮度，进入 `idle` 时恢复系统快照。
 - daemon 正常退出后恢复启动前状态；无法恢复时应用并记录安全基础主题。
 - 硬件测试必须通过 `AGENT_GLOW_HARDWARE_TEST=1` 显式启用。
 
@@ -274,8 +274,8 @@ P3 已完成，并统一标记内部开发版本 `0.1.0-dev`，用于日常真�
 2026-07-26 的 Aura 实测完成 20 次 30 秒 heartbeat 与 diagnostics 采样，
 `consecutiveFailures=0`、`retryScheduled=false`，采样时等待区始终为空。asusd
 重启时出现一次预期的连接断开写失败，随后依次观察到 unavailable、service-restored、
-设备重新发现和 working 目标恢复，没有进入第二次退避。P4 后的 Slash 六状态回归及
-完整快照恢复同样通过。
+设备重新发现和 working 目标恢复，没有进入第二次退避。P4 后的 Slash 主动状态回归
+及 idle 完整快照恢复同样通过。
 
 P4 已完成。后续进入 P5 持久配置与 systemd 用户服务。
 
@@ -283,30 +283,92 @@ P4 已完成。后续进入 P5 持久配置与 systemd 用户服务。
 
 目标：让 headless 版本具备可长期使用、重启后保持配置和由用户服务管理的能力。
 
-### 8.1 配置
+P5 按以下五个可独立验收的阶段顺序推进，不并行铺开。配置结构和公开 RPC
+继续使用 TypeBox；YAML 只是磁盘表示，不成为运行时真相。
 
-- [ ] 实现 XDG 配置路径、首次默认配置和示例配置。
-- [ ] 实现临时文件写入、同步、原子替换。
-- [ ] 实现 `config.get`、`config.validate`、`config.update`。
-- [ ] 配置更新失败时保留旧文件、旧内存配置和旧视觉状态。
-- [ ] 应用成功配置时从当前视觉状态平滑切换。
-- [ ] 为 schema 版本保留显式迁移入口，但 v1 不实现猜测性的迁移。
+### 8.1 P5-A：配置契约与默认值（已完成）
 
-### 8.2 服务
+- [x] 在 `packages/protocol` 定义硬件无关的 v1 配置 schema 和类型。
+- [x] 配置包含 daemon 参数、渲染参数、五种主动语义 profile，以及按稳定设备 ID
+  保存的设备注册配置值；`idle` 表示系统默认状态，不是可配置灯效。通用 schema
+  不出现 asusd、Aura、Slash 或固件模式编号。
+- [x] 创建 `packages/config`，负责默认值、XDG 路径和 YAML 边界。
+- [x] 默认路径为 `$XDG_CONFIG_HOME/agent-glow/config.yaml`，未设置时回退到
+  `~/.config/agent-glow/config.yaml`；测试可注入环境和 home，不读取真实用户目录。
+- [x] 提供 `configs/config.example.yaml`，内容必须由同一 schema 校验通过。
+- [x] schema 版本固定为 `1`；保留显式迁移分发入口，未知版本直接拒绝，P5
+  不实现猜测性迁移。
 
-- [ ] 添加 systemd 用户 unit。
-- [ ] CLI 添加服务状态、启动、停止、启用和禁用命令。
-- [ ] 正确处理 asusd 尚未启动或晚于 daemon 出现的情况。
-- [ ] 为退出恢复设置严格超时。
-- [ ] 日志只写 stdout/stderr，确认可通过 journald 查询。
+验收：默认配置、示例 YAML、未知字段、非法范围、未知版本和 XDG 路径均有确定性测试。
 
-### 8.3 验收门槛
+### 8.2 P5-B：原子配置存储（已完成）
+
+- [x] 使用严格 YAML 解析，解析后由 TypeBox 完整校验，不认识的字段报错。
+- [x] 首次启动时创建权限受限的配置目录和默认配置。
+- [x] 保存时在同目录创建临时文件，写入并同步文件后原子替换，再同步父目录。
+- [x] 任一步失败都清理临时文件并保留旧配置；禁止先截断正式配置文件。
+- [x] 文件系统操作可注入，以测试写入、同步、替换和目录同步各阶段的失败。
+
+验收：每个模拟失败点后，旧文件内容仍可读取且没有半写入 YAML。
+
+### 8.3 P5-C：daemon 配置事务与 CLI（已完成）
+
+- [x] daemon 启动时加载配置，并把已发现设备的持久值交给设备注册 schema 校验。
+- [x] 实现 `config.get`、`config.validate`、`config.update` RPC；更新以完整候选配置
+  为单位，不在 v1 引入复杂 patch 语义。
+- [x] CLI 使用 Commander.js 添加 `config show`、`config validate <file>` 和
+  `config apply <file>`。
+- [x] `device.config.update` 进入同一个配置事务，不再只修改 backend 内存。
+- [x] 事务顺序固定为：解析与校验候选配置、准备临时文件、应用运行态、原子提交；
+  应用或提交失败时恢复旧内存配置、旧设备配置和旧视觉目标。
+- [x] 成功更新当前语义 profile 时，从动画引擎当前帧平滑过渡，不重启动画时间线。
+- [x] 未连接设备的持久配置按稳定设备 ID 保留；设备重新出现后再执行其注册配置校验。
+
+验收：配置成功后重启 daemon 仍保持主题和设备设置；任何失败都不改变旧文件、
+旧内存配置或当前灯效。
+
+### 8.4 P5-D：启动韧性与 systemd 用户服务
+
+- [x] daemon 在 asusd 尚未出现时仍创建 Socket 并进入 degraded/unavailable 状态，
+  服务出现后自动发现设备并应用当前逻辑目标。
+- [x] 为停止时的调度器收敛、快照恢复和 backend 关闭设置严格的总超时，超时后
+  记录错误并有界退出。
+- [x] 添加生产用 `agent-glow.service` 用户 unit，不声明对系统级
+  `asusd.service` 的无效排序依赖。
+- [x] CLI 使用 Commander.js 添加 `service status/start/stop/restart/enable/disable`，
+  仅用参数数组调用 `systemctl --user`，不经过 shell。
+- [x] 提供显式的本地开发安装/移除入口用于实测 unit；安装 unit 后不自动 enable
+  或 start，所有外部状态修改都由用户明确执行。
+- [x] daemon 日志只写 stdout/stderr，并提供 `journalctl --user-unit
+  agent-glow.service` 可读取启动、重连、降级和恢复记录。
+
+验收：先启动 daemon 后启动 asusd、先启动 asusd 后启动 daemon、重启 asusd、
+重启 daemon、停止和禁用用户服务均得到一致结果；所有操作不需要 sudo。
+
+### 8.5 P5-E：Headless beta 验收
+
+- [x] 在临时 XDG 目录完成默认配置、更新、失败回滚和 daemon 重启集成测试。
+- [x] 用 fake backend 验证 systemd 命令构造和退出超时；普通测试不访问真实
+  systemd 或硬件。
+- [ ] 在当前机器显式安装开发 unit，人工执行 enable、start、restart、stop、
+  disable，并检查 journald。
+- [ ] 在 Aura 与 Slash 上验证配置持久化、服务重启、asusd 晚到和退出快照恢复。
+- [x] 更新配置格式、CLI、用户服务和故障恢复文档。
+
+P5 的软件实现和自动验收已完成。最后两项是会改变当前用户服务与真实硬件状态的
+显式人工验收，命令和观察点记录在 `docs/headless-operations.md`；自动测试不会代替
+用户执行这些外部状态修改。
+
+### 8.6 P5 完成门槛
 
 - systemd 用户服务可启用、启动、停止、重启，但安装包不会擅自为用户启用。
 - daemon 或 asusd 的不同启动顺序不影响最终设备发现。
 - 配置保存中模拟失败不会损坏旧配置。
 - 重启 daemon 后配置和基础主题保持一致。
 - 完成 P5 后发布 headless beta，至少进行一周日常使用观察；期间重点记录崩溃、恢复失败、写入频率和日志量。
+
+P5 不创建 Desktop、不写 Agent Hook 安装器、不制作 AUR/发布压缩包，也不增加 CI。
+完整发行安装、升级和卸载仍属于 P8。
 
 ## 9. P6：实现 Desktop 薄客户端
 

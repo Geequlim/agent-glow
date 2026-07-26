@@ -67,7 +67,7 @@ Phantom, Spectrum, Hazard, Interfacing, Ramp, GameOver, Start, Buzzer
 
 | 语义状态 | Slash 模式 | 亮度 | 选择依据 |
 | --- | --- | --- | --- |
-| `idle` | Phantom | 20% | 低亮度淡入淡出作为安静基线 |
+| `idle` | 不设置 | 系统原值 | 恢复接管前保存的完整硬件快照 |
 | `paused` | Bounce | 30% | 低亮度往返表达仍在等待 |
 | `working` | Loading | 70% | 进度条式动画表达处理中 |
 | `waiting_permission` | Buzzer | 100% | 通知式动画要求用户注意 |
@@ -81,7 +81,7 @@ GU405AR 补丁版已把 `Mode` getter 与 setter 统一为 `SlashMode` 的 `u` �
 AgentGlow 可以通过标准 `Properties.Get/Set` 读取、切换并恢复模式，不需要绕过
 asusd 抢占 USB 设备。
 
-2026-07-26 的真实六状态测试已确认 `Enabled`、`Brightness`、`Interval` 和
+2026-07-26 的真实主动状态测试已确认 `Enabled`、`Brightness`、`Interval` 和
 `Mode` 均可写入。测试结束后的回读为 `false / 64 / 1 / 50`，与测试前完全一致。
 
 ## 4. AgentGlow Aura MVP 验证
@@ -133,7 +133,7 @@ delivery.pending = false
 暂停提交，并在服务恢复后重新发现 Aura、捕获新快照和恢复 working 逻辑目标。重启
 窗口只有一次预期的 `NoReply`，没有进入第二次退避。
 
-P4 后再次运行 Slash 六状态冒烟测试，六种固件动画均切换成功，退出时
+P4 后再次运行 Slash 主动状态冒烟测试，五种固件动画均切换成功，进入 idle 及退出时
 `Enabled`、`Brightness`、`Interval` 和 `Mode` 完整恢复。
 
 ## 7. 归一化 fixture

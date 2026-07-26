@@ -13,26 +13,39 @@ describe('RpcRequestSchema', () => {
 				params: { protocolVersion: 1, clientName: 'agent-glow-cli' },
 			},
 			{ jsonrpc: '2.0', id: 2, method: 'daemon.getStatus', params: {} },
-			{ jsonrpc: '2.0', id: 3, method: 'device.list', params: {} },
+			{ jsonrpc: '2.0', id: 3, method: 'config.get', params: {} },
 			{
 				jsonrpc: '2.0',
 				id: 4,
+				method: 'config.validate',
+				params: { config: validConfig },
+			},
+			{
+				jsonrpc: '2.0',
+				id: 5,
+				method: 'config.update',
+				params: { config: validConfig },
+			},
+			{ jsonrpc: '2.0', id: 6, method: 'device.list', params: {} },
+			{
+				jsonrpc: '2.0',
+				id: 7,
 				method: 'device.config.get',
 				params: { deviceId: 'fake:light-1' },
 			},
 			{
 				jsonrpc: '2.0',
-				id: 5,
+				id: 8,
 				method: 'device.config.update',
 				params: {
 					deviceId: 'fake:light-1',
 					values: { 'states.working.brightness': 128 },
 				},
 			},
-			{ jsonrpc: '2.0', id: 6, method: 'diagnostics.get', params: {} },
+			{ jsonrpc: '2.0', id: 9, method: 'diagnostics.get', params: {} },
 			{
 				jsonrpc: '2.0',
-				id: 7,
+				id: 10,
 				method: 'event.emit',
 				params: {
 					event: {
@@ -46,7 +59,7 @@ describe('RpcRequestSchema', () => {
 			},
 			{
 				jsonrpc: '2.0',
-				id: 8,
+				id: 11,
 				method: 'event.clear',
 				params: { source: 'codex', sessionId: 'session-1' },
 			},
@@ -75,3 +88,23 @@ describe('RpcRequestSchema', () => {
 		).toBe(false);
 	});
 });
+
+const staticProfile = {
+	color: '#402060',
+	effect: 'static',
+	hardwareIntensity: 0.2,
+	intensity: 0.25,
+} as const;
+const validConfig = {
+	version: 1,
+	daemon: { frameRate: 10, staleSessionTimeoutMs: 300_000 },
+	rendering: { colorSpace: 'linear-rgb', restoreOnExit: true, transitionMs: 300 },
+	profiles: {
+		working: staticProfile,
+		waiting_permission: staticProfile,
+		success: staticProfile,
+		error: staticProfile,
+		paused: staticProfile,
+	},
+	devices: {},
+} as const;

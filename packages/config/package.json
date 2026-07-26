@@ -1,21 +1,19 @@
 {
-	"name": "@agent-glow/daemon",
+	"name": "@agent-glow/config",
 	"version": "0.1.0-dev",
 	"private": true,
 	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"dependencies": {
-		"@agent-glow/backend-asusd": "workspace:^",
-		"@agent-glow/config": "workspace:^",
-		"@agent-glow/core": "workspace:^",
 		"@agent-glow/protocol": "workspace:^",
 		"@sinclair/typebox": "0.34.52",
-		"commander": "15.0.0"
+		"yaml": "2.9.0"
 	},
 	"devDependencies": {
-		"@rspack/cli": "2.1.4",
-		"@rspack/core": "2.1.4",
 		"@types/node": "24.13.3",
-		"ts-checker-rspack-plugin": "1.5.2",
 		"typescript": "7.0.2",
 		"vitest": "4.1.10"
 	},

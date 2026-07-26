@@ -229,14 +229,14 @@ type SemanticState =
 
 | 状态 | 默认灯效 | 生命周期 |
 | --- | --- | --- |
-| `idle` | 用户基础色，低亮度静态 | 无活动租约时 |
+| `idle` | 恢复并保持系统原始硬件状态 | 无活动租约时 |
 | `working` | 蓝紫色缓慢呼吸 | 持续状态 |
 | `waiting_permission` | 琥珀色较快呼吸 | 持续到授权或取消 |
 | `success` | 绿色柔和闪现后回落 | 瞬态，默认 1.5 秒 |
 | `error` | 红色双脉冲后保持低亮度 | 瞬态叠加或持续错误 |
 | `paused` | 暖白低亮度静态 | 持续状态 |
 
-默认效果只是预设，用户可在 UI 中修改。
+主动状态的默认效果只是预设，用户可在 UI 中修改；`idle` 不提供主题配置。
 
 ### 5.2 标准事件
 
@@ -438,47 +438,59 @@ $XDG_CONFIG_HOME/agent-glow/config.yaml
 version: 1
 
 daemon:
-  enabledDevices: auto
-  staleSessionTimeoutMs: 1800000
   frameRate: 10
+  staleSessionTimeoutMs: 300000
 
 rendering:
-  transitionMs: 300
   colorSpace: linear-rgb
   restoreOnExit: true
+  transitionMs: 300
 
 profiles:
-  idle:
-    color: "#402060"
-    effect: static
-    intensity: 0.25
   working:
     color: "#5865F2"
     effect: breathe
+    hardwareIntensity: 0.7
+    minimumIntensity: 0.08
+    maximumIntensity: 1
     periodMs: 2200
-    minIntensity: 0.08
-    maxIntensity: 1
   waiting_permission:
     color: "#FF9F1C"
     effect: breathe
+    hardwareIntensity: 1
+    minimumIntensity: 0.15
+    maximumIntensity: 1
     periodMs: 900
   success:
     color: "#35C759"
     effect: pulse
-    durationMs: 1500
+    hardwareIntensity: 0.9
+    minimumIntensity: 0.15
+    maximumIntensity: 1
+    durationMs: 900
+    pulseCount: 1
   error:
     color: "#FF3B30"
     effect: pulse
-    pattern: double
+    hardwareIntensity: 1
+    minimumIntensity: 0.15
+    maximumIntensity: 1
+    durationMs: 1000
+    pulseCount: 2
+  paused:
+    color: "#FFF4D6"
+    effect: static
+    hardwareIntensity: 0.3
+    intensity: 0.25
 
-backends:
-  asusd:
-    enabled: true
-    aura:
-      hardwareBrightness: 2
-    slash:
-      brightness: 128
+devices:
+  "backend:stable-device-id":
+    states.working.brightness: 128
 ```
+
+仓库中的 `configs/config.example.yaml` 是由同一 TypeBox schema 持续验证的完整默认示例。
+`devices` 下的键来自 backend 声明的稳定设备 ID，值来自该设备运行时注册的通用配置项；
+顶层 schema 不包含任何具体硬件类型。
 
 配置管理要求：
 
@@ -505,7 +517,7 @@ backends:
 
 ### 10.2 状态主题
 
-- 为每个语义状态选择颜色；
+- 为每个主动语义状态选择颜色；
 - 选择 Static、Breathe、Pulse 或设备原生效果；
 - 设置周期、强度范围和过渡时间；
 - 实时预览；

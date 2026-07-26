@@ -11,7 +11,7 @@ const DISPLAY_MILLISECONDS = 5000;
 const HARDWARE_TEST_ENVIRONMENT = 'AGENT_GLOW_HARDWARE_TEST';
 const deviceKind = readDeviceKind();
 const states = [
-	{ state: 'idle', aura: '低亮度紫色', slash: 'Phantom 亮度 20%' },
+	{ state: 'idle', aura: '系统原始状态', slash: '系统原始状态' },
 	{ state: 'paused', aura: '低亮度暖白', slash: 'Bounce 亮度 30%' },
 	{ state: 'working', aura: '蓝紫慢呼吸', slash: 'Loading 亮度 70%' },
 	{
@@ -46,6 +46,7 @@ async function runHardwareSmoke(): Promise<void> {
 		AGENT_GLOW_ASUSD_DEVICE_KIND: deviceKind,
 		AGENT_GLOW_HARDWARE_TEST: '1',
 		AGENT_GLOW_SOCKET: socketPath,
+		XDG_CONFIG_HOME: path.join(temporaryDirectory, 'config'),
 	};
 	const daemon = spawn(process.execPath, [DAEMON_BUNDLE], {
 		env: environment,

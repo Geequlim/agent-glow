@@ -22,6 +22,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@agent-glow/cli@workspace:apps/cli"
   dependencies:
+    "@agent-glow/config": "workspace:^"
     "@agent-glow/protocol": "workspace:^"
     "@rspack/cli": "npm:2.1.4"
     "@rspack/core": "npm:2.1.4"
@@ -30,6 +31,19 @@ __metadata:
     ts-checker-rspack-plugin: "npm:1.5.2"
     typescript: "npm:7.0.2"
     vitest: "npm:4.1.10"
+  languageName: unknown
+  linkType: soft
+
+"@agent-glow/config@workspace:^, @agent-glow/config@workspace:packages/config":
+  version: 0.0.0-use.local
+  resolution: "@agent-glow/config@workspace:packages/config"
+  dependencies:
+    "@agent-glow/protocol": "workspace:^"
+    "@sinclair/typebox": "npm:0.34.52"
+    "@types/node": "npm:24.13.3"
+    typescript: "npm:7.0.2"
+    vitest: "npm:4.1.10"
+    yaml: "npm:2.9.0"
   languageName: unknown
   linkType: soft
 
@@ -50,6 +64,7 @@ __metadata:
   resolution: "@agent-glow/daemon@workspace:apps/daemon"
   dependencies:
     "@agent-glow/backend-asusd": "workspace:^"
+    "@agent-glow/config": "workspace:^"
     "@agent-glow/core": "workspace:^"
     "@agent-glow/protocol": "workspace:^"
     "@rspack/cli": "npm:2.1.4"
@@ -5214,7 +5229,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"yaml@npm:^2.9.0":
+"yaml@npm:2.9.0, yaml@npm:^2.9.0":
   version: 2.9.0
   resolution: "yaml@npm:2.9.0"
   bin:

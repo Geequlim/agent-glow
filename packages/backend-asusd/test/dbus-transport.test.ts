@@ -10,7 +10,7 @@ afterEach(() => vi.useRealTimers());
 describe('DbusAsusdTransport lifecycle', () => {
 	it('bounds a D-Bus request that never returns', async () => {
 		vi.useFakeTimers();
-		const transport = new DbusAsusdTransport(createBus().bus);
+		const transport = new DbusAsusdTransport(createBus(false).bus);
 		const request = transport.getProperty('/device', 'example.Interface', 'Value');
 		const rejection = expect(request).rejects.toThrow('D-Bus request timed out');
 
@@ -41,7 +41,7 @@ describe('DbusAsusdTransport lifecycle', () => {
 	});
 });
 
-function createBus(): {
+function createBus(reportOwner = true): {
 	readonly bus: MessageBus;
 	readonly dbus: EventEmitter;
 	readonly login: EventEmitter;
@@ -50,7 +50,14 @@ function createBus(): {
 	const login = new EventEmitter();
 	const bus = {
 		connection: { stream: { destroy: vi.fn() } },
-		invoke: vi.fn(),
+		invoke: vi.fn(
+			(
+				message: { readonly member?: string },
+				callback: (error: null, value: boolean) => void,
+			) => {
+				if (reportOwner && message.member === 'NameHasOwner') callback(null, true);
+			},
+		),
 		getService: (name: string) => ({
 			getInterface: (
 				_path: string,

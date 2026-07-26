@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-const HARDWARE_INDEPENDENT_PACKAGES = ['packages/protocol', 'packages/core'];
+const HARDWARE_INDEPENDENT_PACKAGES = ['packages/protocol', 'packages/config', 'packages/core'];
 const SOURCE_EXTENSIONS = new Set(['.json', '.ts', '.tsx', '.mts', '.cts']);
 const FORBIDDEN_REFERENCES = [
 	{ pattern: /@agent-glow\/backend-/u, description: 'production backend package' },

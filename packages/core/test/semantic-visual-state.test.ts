@@ -3,11 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { getSemanticVisualEffect, renderVisualFrame } from '../src/semantic-visual-state.js';
 
 describe('semantic visual effects', () => {
-	it('uses explicit low static intensity for idle', () => {
+	it('uses an off frame only as the idle restoration fallback', () => {
 		const effect = getSemanticVisualEffect('idle');
 
-		expect(effect).toMatchObject({ effect: 'static', intensity: 0.25 });
-		expect(renderVisualFrame(effect, 1000).intensity).toBe(0.25);
+		expect(effect).toMatchObject({
+			color: { red: 0, green: 0, blue: 0 },
+			effect: 'static',
+			hardwareIntensity: 0,
+			intensity: 0,
+		});
+		expect(renderVisualFrame(effect, 1000).intensity).toBe(0);
 	});
 
 	it('renders a continuous working breathe cycle', () => {

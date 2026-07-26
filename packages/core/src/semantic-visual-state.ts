@@ -36,9 +36,9 @@ export type SemanticVisualEffect = StaticVisualEffect | BreatheVisualEffect | Pu
 const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 	idle: {
 		effect: 'static',
-		color: { red: 64, green: 32, blue: 96 },
-		hardwareIntensity: 0.2,
-		intensity: 0.25,
+		color: { red: 0, green: 0, blue: 0 },
+		hardwareIntensity: 0,
+		intensity: 0,
 		semanticState: 'idle',
 	},
 	paused: {

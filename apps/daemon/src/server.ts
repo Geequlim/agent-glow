@@ -1,7 +1,9 @@
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
+import { validateConfigValue } from '@agent-glow/config';
 import type {
 	BackendApplyResult,
 	BackendLifecycleEvent,
@@ -21,7 +23,12 @@ import {
 	type SemanticVisualEffect,
 } from '@agent-glow/core/semantic-visual-state';
 import { VisualStateEngine } from '@agent-glow/core/visual-state-engine';
+import type { AgentGlowConfig } from '@agent-glow/protocol/config';
 import type { DeviceDescriptor } from '@agent-glow/protocol/device';
+import type {
+	DeviceConfiguration,
+	DeviceConfigurationValues,
+} from '@agent-glow/protocol/device-configuration';
 import {
 	isProtocolMessageWithinLimit,
 	PROTOCOL_LIMITS,
@@ -31,33 +38,59 @@ import { type RpcRequest, RpcRequestSchema } from '@agent-glow/protocol/rpc';
 import { Value } from '@sinclair/typebox/value';
 
 import { createLightingBackend } from './backend-factory.js';
+import {
+	configuredVisualEffect,
+	createFileConfigRepository,
+	type DaemonConfigRepository,
+} from './config.js';
 import { resolveSocketPath } from './socket-path.js';
-
-const ANIMATION_FRAME_INTERVAL_MS = 100;
 
 export interface DaemonServer {
 	readonly socketPath: string;
 	close(): Promise<void>;
 }
 
+export interface DaemonServerOptions {
+	readonly configRepository?: DaemonConfigRepository;
+	readonly shutdownTimeoutMs?: number;
+}
+
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000;
+
+interface DeviceConfigurationPlan {
+	readonly deviceId: string;
+	readonly previousValues: DeviceConfigurationValues;
+	readonly targetValues: DeviceConfigurationValues;
+}
+
 export async function startDaemonServer(
 	daemonVersion: string,
 	socketPath = resolveSocketPath(),
 	backend: LightingBackend = createLightingBackend(),
+	options: DaemonServerOptions = {},
 ): Promise<DaemonServer> {
 	await prepareSocketPath(socketPath);
 
-	const arbiter = new LeaseArbiter();
-	const visualEngine = new VisualStateEngine(getSemanticVisualEffect('idle'));
+	const configRepository = options.configRepository ?? createFileConfigRepository();
+	let config = validateConfigValue(structuredClone(await configRepository.load()));
+	const arbiter = new LeaseArbiter(undefined, config.daemon.staleSessionTimeoutMs);
+	const visualEngine = new VisualStateEngine(
+		configuredVisualEffect(config, 'working'),
+		undefined,
+		config.rendering.transitionMs,
+	);
 	const sockets = new Set<Socket>();
 	let activeRequests = 0;
 	let animationTimer: NodeJS.Timeout | undefined;
+	let stateSyncPending = false;
 	let closing = false;
+	let closePromise: Promise<void> | undefined;
 	let devices: readonly DeviceDescriptor[] = [];
 	let displayedState: ReturnType<LeaseArbiter['currentState']> = 'idle';
 	let lifecyclePaused = false;
 	let lifecycleQueue = Promise.resolve();
-	let snapshots: readonly BackendSnapshot[];
+	let configQueue = Promise.resolve();
+	let snapshots: readonly BackendSnapshot[] = [];
 	const deviceDiagnostics = new Map<
 		string,
 		{
@@ -75,14 +108,7 @@ export async function startDaemonServer(
 		onResult: recordApplyResult,
 		onError: recordApplyError,
 	});
-	try {
-		devices = await backend.discoverDevices();
-		snapshots = await Promise.all(devices.map((device) => backend.captureSnapshot(device.id)));
-		await displayState('idle');
-	} catch (error) {
-		await backend.close();
-		throw error;
-	}
+	await scheduler.pause();
 	const server = createServer((socket) => {
 		sockets.add(socket);
 		socket.setEncoding('utf8');
@@ -144,21 +170,37 @@ export async function startDaemonServer(
 				return { protocolVersion: PROTOCOL_VERSION, daemonVersion };
 			case 'daemon.getStatus':
 				return { lifecycle: 'running', currentState: arbiter.currentState() };
+			case 'config.get':
+				return enqueueConfigTransaction(() => Promise.resolve(structuredClone(config)));
+			case 'config.validate':
+				return enqueueConfigTransaction(async () => {
+					validateConfigValue(request.params.config);
+					await buildDeviceConfigurationPlans(request.params.config, devices);
+					return { valid: true };
+				});
+			case 'config.update':
+				return enqueueConfigTransaction(() => updateConfiguration(request.params.config));
 			case 'device.list':
-				return { devices: await backend.discoverDevices() };
+				return { devices };
 			case 'device.config.get':
-				return backend.getDeviceConfiguration(request.params.deviceId);
-			case 'device.config.update': {
-				const current = await backend.getDeviceConfiguration(request.params.deviceId);
-				const updated = mergeDeviceConfiguration(current, request.params.values);
-				await backend.updateDeviceConfiguration(request.params.deviceId, updated.values);
-				scheduler.invalidate(request.params.deviceId);
-				await displayState(arbiter.currentState());
-				return updated;
-			}
+				return enqueueConfigTransaction(() =>
+					backend.getDeviceConfiguration(request.params.deviceId),
+				);
+			case 'device.config.update':
+				return enqueueConfigTransaction(async () => {
+					const current = await backend.getDeviceConfiguration(request.params.deviceId);
+					const updated = mergeDeviceConfiguration(current, request.params.values);
+					const candidate = structuredClone(config);
+					candidate.devices[request.params.deviceId] = { ...updated.values };
+					await updateConfiguration(candidate);
+					return backend.getDeviceConfiguration(request.params.deviceId);
+				});
 			case 'diagnostics.get': {
 				return {
-					backend: { id: backend.id, health: backend.getHealth() },
+					backend: {
+						id: backend.id,
+						health: lifecyclePaused ? 'unavailable' : backend.getHealth(),
+					},
 					devices: devices.map((device) => ({
 						deviceId: device.id,
 						delivery: scheduler.stats(device.id),
@@ -183,16 +225,178 @@ export async function startDaemonServer(
 		}
 	}
 
+	async function updateConfiguration(candidateValue: AgentGlowConfig): Promise<AgentGlowConfig> {
+		const candidate = validateConfigValue(structuredClone(candidateValue));
+		const plans = await buildDeviceConfigurationPlans(candidate, devices);
+		const prepared = await configRepository.prepare(candidate);
+		const resumeDelivery = !lifecyclePaused && displayedState !== 'idle';
+		let deviceConfigurationApplied = false;
+		await scheduler.pause();
+		try {
+			await applyDeviceConfigurationPlans(plans);
+			deviceConfigurationApplied = true;
+			await prepared.commit();
+		} catch (error) {
+			const rollbackErrors: unknown[] = [];
+			if (deviceConfigurationApplied) {
+				await captureError(() => rollbackDeviceConfigurationPlans(plans), rollbackErrors);
+			}
+			await captureError(() => prepared.discard(), rollbackErrors);
+			scheduler.invalidate();
+			if (displayedState !== 'idle') submitFrame(visualEngine.frame());
+			if (resumeDelivery && !lifecyclePaused) scheduler.resume();
+			if (rollbackErrors.length > 0) {
+				throw new AggregateError(
+					[error, ...rollbackErrors],
+					'Configuration transaction failed',
+				);
+			}
+			throw error;
+		}
+
+		const previousConfig = config;
+		config = candidate;
+		arbiter.setStaleLeaseTtlMs(config.daemon.staleSessionTimeoutMs);
+		const currentState = arbiter.currentState();
+		visualEngine.setTransitionDurationMs(config.rendering.transitionMs);
+		if (
+			currentState !== 'idle' &&
+			!isDeepStrictEqual(previousConfig.profiles[currentState], config.profiles[currentState])
+		) {
+			visualEngine.reconfigure(
+				configuredVisualEffect(config, currentState),
+				config.rendering.transitionMs,
+			);
+		}
+		displayedState = currentState;
+		scheduler.invalidate();
+		if (currentState !== 'idle') {
+			submitFrame(visualEngine.frame());
+			if (resumeDelivery && !lifecyclePaused) scheduler.resume();
+		}
+		await scheduler.flush();
+		startAnimationTimer();
+		console.log(`[agent-glow] configuration updated version=${config.version}`);
+		if (currentState === 'idle') {
+			console.log(`[agent-glow] state=idle mode=system-default backend=${backend.id}`);
+		} else {
+			console.log(
+				formatEffectLog(
+					currentState,
+					configuredVisualEffect(config, currentState),
+					backend.id,
+					devices.length,
+					config.daemon.frameRate,
+				),
+			);
+		}
+		return structuredClone(config);
+	}
+
+	async function buildDeviceConfigurationPlans(
+		candidate: AgentGlowConfig,
+		targetDevices: readonly DeviceDescriptor[],
+	): Promise<readonly DeviceConfigurationPlan[]> {
+		return Promise.all(
+			targetDevices.map(async (device) => {
+				const current = mergeDeviceConfiguration(
+					await backend.getDeviceConfiguration(device.id),
+					{},
+				);
+				const defaults: DeviceConfiguration = {
+					...current,
+					values: Object.fromEntries(
+						current.settings.map((setting) => [setting.key, setting.defaultValue]),
+					),
+				};
+				const target = mergeDeviceConfiguration(
+					defaults,
+					candidate.devices[device.id] ?? {},
+				);
+				return {
+					deviceId: device.id,
+					previousValues: { ...current.values },
+					targetValues: { ...target.values },
+				};
+			}),
+		);
+	}
+
+	async function applyDeviceConfigurationPlans(
+		plans: readonly DeviceConfigurationPlan[],
+	): Promise<void> {
+		const applied: DeviceConfigurationPlan[] = [];
+		try {
+			for (const plan of plans) {
+				await backend.updateDeviceConfiguration(plan.deviceId, plan.targetValues);
+				applied.push(plan);
+			}
+		} catch (error) {
+			const rollbackErrors: unknown[] = [];
+			await captureError(() => rollbackDeviceConfigurationPlans(applied), rollbackErrors);
+			if (rollbackErrors.length > 0) {
+				throw new AggregateError(
+					[error, ...rollbackErrors],
+					'Device configuration apply failed',
+				);
+			}
+			throw error;
+		}
+	}
+
+	async function rollbackDeviceConfigurationPlans(
+		plans: readonly DeviceConfigurationPlan[],
+	): Promise<void> {
+		const errors: unknown[] = [];
+		for (const plan of [...plans].reverse()) {
+			await captureError(
+				() => backend.updateDeviceConfiguration(plan.deviceId, plan.previousValues),
+				errors,
+			);
+		}
+		if (errors.length > 0)
+			throw new AggregateError(errors, 'Device configuration rollback failed');
+	}
+
+	function enqueueConfigTransaction<T>(operation: () => Promise<T>): Promise<T> {
+		const result = configQueue.then(operation);
+		configQueue = result.then(
+			() => undefined,
+			() => undefined,
+		);
+		return result;
+	}
+
 	async function displayState(
 		state: ReturnType<LeaseArbiter['currentState']>,
 		restart = false,
 	): Promise<void> {
-		const effect = getSemanticVisualEffect(state);
-		visualEngine.setTarget(effect, restart);
+		if (state === 'idle') {
+			await scheduler.pause();
+			if (!lifecyclePaused) await restoreBackendSnapshots(backend, snapshots);
+			displayedState = state;
+			console.log(`[agent-glow] state=idle mode=system-default backend=${backend.id}`);
+			return;
+		}
+		const effect = configuredVisualEffect(config, state);
+		if (displayedState === 'idle') {
+			if (!lifecyclePaused) {
+				snapshots = await Promise.all(
+					devices.map((device) => backend.captureSnapshot(device.id)),
+				);
+			}
+			visualEngine.reconfigure(effect, 0);
+			visualEngine.setTransitionDurationMs(config.rendering.transitionMs);
+		} else {
+			visualEngine.setTarget(effect, restart);
+		}
 		displayedState = state;
 		submitFrame(visualEngine.frame());
+		if (!lifecyclePaused) scheduler.resume();
 		await scheduler.flush();
-		console.log(formatEffectLog(state, effect, backend.id, devices.length));
+		console.log(
+			formatEffectLog(state, effect, backend.id, devices.length, config.daemon.frameRate),
+		);
 	}
 
 	function submitFrame(visualState: StaticVisualState): void {
@@ -259,23 +463,38 @@ export async function startDaemonServer(
 
 	async function refreshDevices(reason: string): Promise<void> {
 		const refreshedDevices = await backend.discoverDevices();
-		snapshots = await reconcileBackendSnapshots(backend, snapshots, refreshedDevices);
+		const refreshedSnapshots = await reconcileBackendSnapshots(
+			backend,
+			snapshots,
+			refreshedDevices,
+		);
+		await applyDeviceConfigurationPlans(
+			await buildDeviceConfigurationPlans(config, refreshedDevices),
+		);
 		devices = refreshedDevices;
+		snapshots = refreshedSnapshots;
 		scheduler.invalidate();
 		lifecyclePaused = false;
-		scheduler.resume();
-		submitFrame(visualEngine.frame());
+		if (arbiter.currentState() === 'idle') {
+			await scheduler.pause();
+			if (reason !== 'startup') await restoreBackendSnapshots(backend, snapshots);
+			displayedState = 'idle';
+			console.log(
+				`[agent-glow] state=idle mode=system-default backend=${backend.id} reason=${reason}`,
+			);
+		} else {
+			scheduler.resume();
+			submitFrame(visualEngine.frame());
+		}
 		await scheduler.flush();
 		console.log(
 			`[agent-glow] backend refreshed backend=${backend.id} reason=${reason} devices=${devices.length}`,
 		);
 	}
 
-	await listen(server, socketPath);
-	await chmod(socketPath, 0o600);
 	const stopLifecycleWatch = backend.watchLifecycle?.((event) => {
 		lifecycleQueue = lifecycleQueue
-			.then(() => handleLifecycleEvent(event))
+			.then(() => enqueueConfigTransaction(() => handleLifecycleEvent(event)))
 			.catch((error: unknown) => {
 				console.error(
 					`[agent-glow] backend lifecycle handling failed error=${
@@ -284,49 +503,104 @@ export async function startDaemonServer(
 				);
 			});
 	});
-	animationTimer = setInterval(() => {
+	await listen(server, socketPath);
+	await chmod(socketPath, 0o600);
+	try {
+		await enqueueConfigTransaction(() => refreshDevices('startup'));
+		console.log(`[agent-glow] backend ready backend=${backend.id} devices=${devices.length}`);
+	} catch (error) {
+		lifecyclePaused = true;
+		await scheduler.pause();
+		console.warn(
+			`[agent-glow] backend unavailable backend=${backend.id} startup=true error=${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+	startAnimationTimer();
+
+	function startAnimationTimer(): void {
+		if (animationTimer) clearInterval(animationTimer);
+		animationTimer = setInterval(animate, 1000 / config.daemon.frameRate);
+	}
+
+	function animate(): void {
 		if (lifecyclePaused) return;
 		const currentState = arbiter.currentState();
 		const changed = currentState !== displayedState;
 		if (changed) {
-			visualEngine.setTarget(getSemanticVisualEffect(currentState));
-			displayedState = currentState;
-			console.log(
-				formatEffectLog(
-					currentState,
-					getSemanticVisualEffect(currentState),
-					backend.id,
-					devices.length,
-				),
-			);
+			if (!stateSyncPending) {
+				stateSyncPending = true;
+				void enqueueConfigTransaction(() => displayState(currentState))
+					.catch((error: unknown) => {
+						console.error(
+							`[agent-glow] state synchronization failed error=${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						);
+					})
+					.finally(() => {
+						stateSyncPending = false;
+					});
+			}
+			return;
 		}
-		if (changed || visualEngine.isAnimating()) submitFrame(visualEngine.frame());
-	}, ANIMATION_FRAME_INTERVAL_MS);
+		if (currentState !== 'idle' && visualEngine.isAnimating()) {
+			submitFrame(visualEngine.frame());
+		}
+	}
 
 	return {
 		socketPath,
-		close: async () => {
-			const errors: unknown[] = [];
-			closing = true;
-			stopLifecycleWatch?.();
-			if (animationTimer) clearInterval(animationTimer);
-			animationTimer = undefined;
-			await captureError(() => lifecycleQueue, errors);
-			await captureError(() => scheduler.close(), errors);
-			for (const socket of sockets) socket.destroy();
-			await captureError(() => closeServer(server), errors);
-			await captureError(() => restoreBackendSnapshots(backend, snapshots), errors);
-			await captureError(() => backend.close(), errors);
-			await captureError(
-				() =>
-					unlink(socketPath).catch((error: unknown) => {
-						if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
-					}),
-				errors,
-			);
-			if (errors.length > 0) throw new AggregateError(errors, 'Daemon shutdown failed');
+		close: () => {
+			closePromise ??= closeWithinDeadline();
+			return closePromise;
 		},
 	};
+
+	async function closeWithinDeadline(): Promise<void> {
+		const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+		return withTimeout(
+			async () => {
+				const errors: unknown[] = [];
+				closing = true;
+				stopLifecycleWatch?.();
+				if (animationTimer) clearInterval(animationTimer);
+				animationTimer = undefined;
+				for (const socket of sockets) socket.destroy();
+				await captureError(() => closeServer(server), errors);
+				await captureError(
+					() =>
+						unlink(socketPath).catch((error: unknown) => {
+							if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
+						}),
+					errors,
+				);
+				await captureError(() => lifecycleQueue, errors);
+				await captureError(() => configQueue, errors);
+				await captureError(() => scheduler.close(), errors);
+				if (config.rendering.restoreOnExit) {
+					await captureError(() => restoreBackendSnapshots(backend, snapshots), errors);
+				}
+				await captureError(() => backend.close(), errors);
+				if (errors.length > 0) throw new AggregateError(errors, 'Daemon shutdown failed');
+			},
+			shutdownTimeoutMs,
+			`Daemon shutdown exceeded ${shutdownTimeoutMs} ms`,
+			() => {
+				console.error(
+					`[agent-glow] daemon shutdown timed out timeoutMs=${shutdownTimeoutMs}`,
+				);
+				void backend.close().catch((error: unknown) => {
+					console.error(
+						`[agent-glow] forced backend close failed error=${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				});
+			},
+		);
+	}
 }
 
 export async function reconcileBackendSnapshots(
@@ -465,6 +739,28 @@ async function captureError(operation: () => Promise<void>, errors: unknown[]): 
 	}
 }
 
+async function withTimeout(
+	operation: () => Promise<void>,
+	timeoutMs: number,
+	message: string,
+	onTimeout?: () => void,
+): Promise<void> {
+	let timeout: NodeJS.Timeout | undefined;
+	try {
+		await Promise.race([
+			operation(),
+			new Promise<never>((_, reject) => {
+				timeout = setTimeout(() => {
+					onTimeout?.();
+					reject(new Error(message));
+				}, timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
+}
+
 function toHexColor(color: {
 	readonly red: number;
 	readonly green: number;
@@ -480,6 +776,7 @@ function formatEffectLog(
 	effect: SemanticVisualEffect,
 	backendId: string,
 	deviceCount: number,
+	frameRate: number,
 ): string {
 	const common = `state=${state} effect=${effect.effect} color=${toHexColor(
 		effect.color,
@@ -487,6 +784,6 @@ function formatEffectLog(
 	if (effect.effect === 'static')
 		return `[agent-glow] displaying ${common} intensity=${effect.intensity}`;
 	if (effect.effect === 'breathe')
-		return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} periodMs=${effect.periodMs} fps=${1000 / ANIMATION_FRAME_INTERVAL_MS}`;
-	return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} pulses=${effect.pulseCount} durationMs=${effect.durationMs} fps=${1000 / ANIMATION_FRAME_INTERVAL_MS}`;
+		return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} periodMs=${effect.periodMs} fps=${frameRate}`;
+	return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} pulses=${effect.pulseCount} durationMs=${effect.durationMs} fps=${frameRate}`;
 }

@@ -4,6 +4,7 @@ develop:
       description: 执行单元测试
       command:
         - yarn --cwd packages/protocol vitest run
+        - yarn --cwd packages/config vitest run
         - yarn --cwd packages/core vitest run
         - yarn --cwd packages/backend-asusd vitest run
         - yarn --cwd apps/daemon vitest run
@@ -17,6 +18,7 @@ develop:
         - yarn tsc -p tsconfig.json
         - yarn tsc -p scripts/tsconfig.json
         - yarn --cwd packages/protocol tsc --noEmit
+        - yarn --cwd packages/config tsc --noEmit
         - yarn --cwd packages/core tsc --noEmit
         - yarn --cwd packages/backend-asusd tsc --noEmit
         - yarn --cwd apps/daemon tsc --noEmit
@@ -104,6 +106,23 @@ develop:
         - yarn tiny format/check
         - yarn tiny test
         - yarn tiny smoke
+    - name: service
+      description: 管理本地开发用 systemd 用户服务
+      actions:
+        - name: install
+          description: 安装开发 unit 并重新加载 systemd（不启用、不启动）
+          command:
+            - yarn tiny build
+            - node scripts/manage-dev-service.mts install
+        - name: start
+          description: 强制重启 AgentGlow 用户服务并持续监听日志
+          command:
+            - node apps/cli/dist/index.cjs service restart
+            - journalctl --user-unit agent-glow.service -n 50 -f
+        - name: remove
+          description: 移除开发 unit 并重新加载用户级 systemd
+          command:
+            - node scripts/manage-dev-service.mts remove
     - name: fix-worktree
       description: 规范化工作区
       command:

@@ -1,0 +1,17 @@
+[Unit]
+Description=AgentGlow lighting state daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=30s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Environment=AGENT_GLOW_BACKEND=asusd
+ExecStart=/usr/bin/agent-glow-daemon
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=7s
+
+[Install]
+WantedBy=graphical-session.target

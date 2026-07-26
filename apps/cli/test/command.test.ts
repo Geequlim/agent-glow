@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { createDefaultConfig, stringifyConfigYaml } from '@agent-glow/config';
+
 import { runCli } from '../src/command.js';
 
 describe('runCli', () => {
@@ -85,6 +87,79 @@ describe('runCli', () => {
 			),
 		).toBe(0);
 		expect(output.stderr).toEqual([]);
+	});
+
+	it('shows, validates and applies YAML configuration through RPC', async () => {
+		const config = createDefaultConfig();
+		const source = stringifyConfigYaml(config);
+		const showOutput = createOutput();
+		expect(
+			await runCli(['config', 'show'], '1.2.3', showOutput, async (method, params) => {
+				expect([method, params]).toEqual(['config.get', {}]);
+				return config;
+			}),
+		).toBe(0);
+		expect(showOutput.stdout.join('')).toBe(source);
+
+		for (const action of ['validate', 'apply'] as const) {
+			const output = createOutput();
+			expect(
+				await runCli(
+					['config', action, 'candidate.yaml'],
+					'1.2.3',
+					output,
+					async (method, params) => {
+						expect(method).toBe(`config.${action === 'apply' ? 'update' : action}`);
+						expect(params).toEqual({ config });
+						return action === 'apply' ? config : { valid: true };
+					},
+					async (filePath) => {
+						expect(filePath).toBe('candidate.yaml');
+						return source;
+					},
+				),
+			).toBe(0);
+			expect(output.stdout.join('')).toBe(action === 'apply' ? source : 'valid\n');
+		}
+	});
+
+	it('runs every service action through systemctl --user without a shell', async () => {
+		for (const action of ['status', 'start', 'stop', 'restart', 'enable', 'disable'] as const) {
+			const output = createOutput();
+			expect(
+				await runCli(
+					['service', action],
+					'1.2.3',
+					output,
+					unusedRequest,
+					async () => {
+						throw new Error('File should not be read');
+					},
+					async (command, args) => {
+						expect(command).toBe('systemctl');
+						expect(args).toEqual(['--user', action, 'agent-glow.service']);
+						return { exitCode: 0, stderr: '', stdout: `${action}\n` };
+					},
+				),
+			).toBe(0);
+			expect(output.stdout).toEqual([`${action}\n`]);
+			expect(output.stderr).toEqual([]);
+		}
+	});
+
+	it('propagates the systemctl exit code and stderr', async () => {
+		const output = createOutput();
+		expect(
+			await runCli(
+				['service', 'status'],
+				'1.2.3',
+				output,
+				unusedRequest,
+				async () => '',
+				async () => ({ exitCode: 3, stderr: 'inactive\n', stdout: '' }),
+			),
+		).toBe(3);
+		expect(output.stderr).toEqual(['inactive\n']);
 	});
 });
 

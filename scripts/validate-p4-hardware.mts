@@ -38,6 +38,7 @@ async function runValidation(): Promise<void> {
 		AGENT_GLOW_ASUSD_DEVICE_KIND: 'aura',
 		AGENT_GLOW_HARDWARE_TEST: '1',
 		AGENT_GLOW_SOCKET: socketPath,
+		XDG_CONFIG_HOME: path.join(temporaryDirectory, 'config'),
 	};
 	const daemon = spawn(process.execPath, [DAEMON_BUNDLE], {
 		env: environment,

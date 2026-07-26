@@ -28,7 +28,11 @@ async function assertVersion(bundle: string): Promise<void> {
 async function assertMvpClosure(): Promise<void> {
 	const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'agent-glow-smoke-'));
 	const socketPath = path.join(temporaryDirectory, 'runtime', 'daemon.sock');
-	const environment = { ...process.env, AGENT_GLOW_SOCKET: socketPath };
+	const environment = {
+		...process.env,
+		AGENT_GLOW_SOCKET: socketPath,
+		XDG_CONFIG_HOME: path.join(temporaryDirectory, 'config'),
+	};
 	const child = spawn(process.execPath, [DAEMON_BUNDLE], {
 		env: environment,
 		stdio: ['ignore', 'pipe', 'pipe'],
@@ -51,6 +55,10 @@ async function assertMvpClosure(): Promise<void> {
 		await waitFor(() => started, 'daemon startup');
 		await assertSocketPermissions(socketPath);
 		await assertCli(environment, ['status'], 'idle');
+		const activeConfig = await runProcess(CLI_BUNDLE, ['config', 'show'], environment);
+		if (activeConfig.code !== 0 || !activeConfig.stdout.includes('version: 1')) {
+			throw new Error(`Config show smoke failed: ${JSON.stringify(activeConfig)}`);
+		}
 		await assertCli(
 			environment,
 			[

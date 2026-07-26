@@ -24,9 +24,15 @@ const systemClock: MonotonicClock = {
 export class LeaseArbiter {
 	readonly #clock: MonotonicClock;
 	readonly #leases = new Map<string, Lease>();
+	#staleLeaseTtlMs: number;
 
-	constructor(clock: MonotonicClock = systemClock) {
+	constructor(clock: MonotonicClock = systemClock, staleLeaseTtlMs = DEFAULT_STALE_LEASE_TTL_MS) {
 		this.#clock = clock;
+		this.#staleLeaseTtlMs = staleLeaseTtlMs;
+	}
+
+	setStaleLeaseTtlMs(staleLeaseTtlMs: number): void {
+		this.#staleLeaseTtlMs = staleLeaseTtlMs;
 	}
 
 	apply(event: AgentGlowEvent): SemanticState {
@@ -38,7 +44,7 @@ export class LeaseArbiter {
 		} else {
 			const ttlMs =
 				event.ttlMs ??
-				(event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : DEFAULT_STALE_LEASE_TTL_MS);
+				(event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : this.#staleLeaseTtlMs);
 			this.#leases.set(key, {
 				source: event.source,
 				sessionId: event.sessionId,

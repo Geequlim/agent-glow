@@ -12,7 +12,7 @@ interface Transition {
 
 export class VisualStateEngine {
 	readonly #clock: MonotonicClock;
-	readonly #transitionDurationMs: number;
+	#transitionDurationMs: number;
 	#effect: SemanticVisualEffect;
 	#effectStartedAt: number;
 	#transition: Transition | undefined;
@@ -35,6 +35,18 @@ export class VisualStateEngine {
 		this.#effect = effect;
 		this.#effectStartedAt = now;
 		this.#transition = this.#transitionDurationMs === 0 ? undefined : { from, startedAt: now };
+	}
+
+	reconfigure(effect: SemanticVisualEffect, transitionDurationMs: number): void {
+		const now = this.#clock.now();
+		const from = this.frame(now);
+		this.#effect = effect;
+		this.#transitionDurationMs = transitionDurationMs;
+		this.#transition = transitionDurationMs === 0 ? undefined : { from, startedAt: now };
+	}
+
+	setTransitionDurationMs(transitionDurationMs: number): void {
+		this.#transitionDurationMs = transitionDurationMs;
 	}
 
 	frame(now = this.#clock.now()): StaticVisualState {

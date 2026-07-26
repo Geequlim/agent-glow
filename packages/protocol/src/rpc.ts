@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 
+import { AgentGlowConfigSchema } from './config.js';
 import { DeviceDescriptorSchema } from './device.js';
 import {
 	DeviceConfigurationSchema,
@@ -47,6 +48,7 @@ export const DeviceConfigurationUpdateParamsSchema = Type.Object(
 	},
 	strict,
 );
+export const ConfigUpdateParamsSchema = Type.Object({ config: AgentGlowConfigSchema }, strict);
 
 export const RpcRequestSchema = Type.Union([
 	Type.Object(
@@ -64,6 +66,33 @@ export const RpcRequestSchema = Type.Union([
 			id: JsonRpcIdSchema,
 			method: Type.Literal('daemon.getStatus'),
 			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('config.get'),
+			params: EmptyParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('config.validate'),
+			params: ConfigUpdateParamsSchema,
+		},
+		strict,
+	),
+	Type.Object(
+		{
+			jsonrpc: Type.Literal('2.0'),
+			id: JsonRpcIdSchema,
+			method: Type.Literal('config.update'),
+			params: ConfigUpdateParamsSchema,
 		},
 		strict,
 	),
@@ -141,6 +170,8 @@ export const DaemonStatusResultSchema = Type.Object(
 	},
 	strict,
 );
+export const ConfigResultSchema = AgentGlowConfigSchema;
+export const ConfigValidationResultSchema = Type.Object({ valid: Type.Literal(true) }, strict);
 export const DeviceListResultSchema = Type.Object(
 	{ devices: Type.Array(DeviceDescriptorSchema, { maxItems: 64 }) },
 	strict,

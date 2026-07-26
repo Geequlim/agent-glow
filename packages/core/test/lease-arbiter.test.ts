@@ -69,6 +69,17 @@ describe('LeaseArbiter', () => {
 
 		expect(arbiter.currentState()).toBe('idle');
 	});
+
+	it('uses an updated stale timeout for new leases', () => {
+		const clock = new FakeClock();
+		const arbiter = new LeaseArbiter(clock, 100);
+		arbiter.setStaleLeaseTtlMs(20);
+		arbiter.apply(event('working', 'enter'));
+
+		clock.advance(20);
+
+		expect(arbiter.currentState()).toBe('idle');
+	});
 });
 
 function event(

@@ -80,7 +80,6 @@ const slashEffects = {
 type SlashEffectId = keyof typeof slashEffects;
 
 const slashDefaults = {
-	idle: { effect: 'phantom', brightness: 51, interval: 5 },
 	paused: { effect: 'bounce', brightness: 77, interval: 3 },
 	working: { effect: 'loading', brightness: 179, interval: 0 },
 	waiting_permission: { effect: 'buzzer', brightness: 255, interval: 1 },
@@ -88,7 +87,7 @@ const slashDefaults = {
 	error: { effect: 'hazard', brightness: 255, interval: 0 },
 } as const satisfies Readonly<
 	Record<
-		StaticVisualState['semanticState'],
+		Exclude<StaticVisualState['semanticState'], 'idle'>,
 		{ readonly effect: SlashEffectId; readonly brightness: number; readonly interval: number }
 	>
 >;
@@ -326,6 +325,9 @@ export class AsusdLightingBackend implements LightingBackend {
 		device: SlashDevice,
 		visualState: StaticVisualState,
 	): Promise<BackendApplyResult> {
+		if (visualState.semanticState === 'idle') {
+			throw new Error('Idle is restored from the system snapshot by the daemon');
+		}
 		const prefix = `states.${visualState.semanticState}`;
 		const configuration = this.#getSlashConfiguration(device.descriptor.id);
 		const effect = slashEffects[configuration[`${prefix}.effect`] as SlashEffectId];

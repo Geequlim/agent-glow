@@ -85,6 +85,7 @@ export class DbusAsusdTransport implements AsusdTransport {
 	}
 
 	watchLifecycle(listener: (event: AsusdLifecycleEvent) => void): () => void {
+		let disposed = false;
 		const cleanups = [
 			this.#watchSignal(
 				'org.freedesktop.DBus',
@@ -107,7 +108,30 @@ export class DbusAsusdTransport implements AsusdTransport {
 				},
 			),
 		];
+		void invoke(this.#bus, {
+			destination: 'org.freedesktop.DBus',
+			path: '/org/freedesktop/DBus',
+			interface: 'org.freedesktop.DBus',
+			member: 'NameHasOwner',
+			signature: 's',
+			body: [ASUS_SERVICE],
+		})
+			.then((available) => {
+				if (!disposed && typeof available === 'boolean') {
+					listener({ type: 'availability', available });
+				}
+			})
+			.catch((error: unknown) => {
+				if (!disposed) {
+					console.error(
+						`[agent-glow] failed to read asusd availability error=${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				}
+			});
 		return () => {
+			disposed = true;
 			for (const cleanup of cleanups) cleanup();
 		};
 	}

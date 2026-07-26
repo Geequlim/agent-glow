@@ -1,3 +1,7 @@
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+
+import { parseConfigYaml, stringifyConfigYaml, validateConfigValue } from '@agent-glow/config';
 import { Command, CommanderError, Option } from 'commander';
 
 import type { RpcRequestFunction } from './rpc-client.js';
@@ -7,12 +11,26 @@ export interface CliOutput {
 	writeOutput(message: string): void;
 }
 
+export interface ServiceCommandResult {
+	readonly exitCode: number;
+	readonly stderr: string;
+	readonly stdout: string;
+}
+
+export type ServiceCommandRunner = (
+	command: string,
+	args: readonly string[],
+) => Promise<ServiceCommandResult>;
+
 export async function runCli(
 	args: readonly string[],
 	version: string,
 	output: CliOutput,
 	request: RpcRequestFunction,
+	readTextFile: (filePath: string) => Promise<string> = (filePath) => readFile(filePath, 'utf8'),
+	runServiceCommand: ServiceCommandRunner = spawnServiceCommand,
 ): Promise<number> {
+	let commandExitCode = 0;
 	const program = new Command()
 		.name('agent-glow')
 		.description('AgentGlow CLI')
@@ -34,6 +52,52 @@ export async function runCli(
 		.description('List discovered devices')
 		.action(async () => {
 			output.writeOutput(`${JSON.stringify(await request('device.list', {}), null, 2)}\n`);
+		});
+
+	const serviceCommand = program
+		.command('service')
+		.description('Manage the systemd user service');
+	for (const action of ['status', 'start', 'stop', 'restart', 'enable', 'disable'] as const) {
+		serviceCommand
+			.command(action)
+			.description(`${action} agent-glow.service`)
+			.action(async () => {
+				const result = await runServiceCommand('systemctl', [
+					'--user',
+					action,
+					'agent-glow.service',
+				]);
+				if (result.stdout) output.writeOutput(result.stdout);
+				if (result.stderr) output.writeError(result.stderr);
+				commandExitCode = result.exitCode;
+			});
+	}
+
+	const configCommand = program.command('config').description('Manage daemon configuration');
+	configCommand
+		.command('show')
+		.description('Show the active configuration as YAML')
+		.action(async () => {
+			const config = validateConfigValue(await request('config.get', {}));
+			output.writeOutput(stringifyConfigYaml(config));
+		});
+	configCommand
+		.command('validate')
+		.description('Validate a YAML configuration with the daemon')
+		.argument('<file>')
+		.action(async (filePath: string) => {
+			const config = parseConfigYaml(await readTextFile(filePath));
+			await request('config.validate', { config });
+			output.writeOutput('valid\n');
+		});
+	configCommand
+		.command('apply')
+		.description('Validate and apply a YAML configuration')
+		.argument('<file>')
+		.action(async (filePath: string) => {
+			const config = parseConfigYaml(await readTextFile(filePath));
+			const updated = validateConfigValue(await request('config.update', { config }));
+			output.writeOutput(stringifyConfigYaml(updated));
 		});
 
 	program
@@ -156,7 +220,7 @@ export async function runCli(
 		return 1;
 	}
 
-	return 0;
+	return commandExitCode;
 }
 
 function writeState(output: CliOutput, result: unknown): void {
@@ -176,4 +240,30 @@ function parseConfigurationValue(value: string): string | number | boolean {
 	if (value === 'false') return false;
 	if (/^-?\d+$/u.test(value)) return Number(value);
 	return value;
+}
+
+function spawnServiceCommand(
+	command: string,
+	args: readonly string[],
+): Promise<ServiceCommandResult> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(command, [...args], {
+			shell: false,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+		let stderr = '';
+		let stdout = '';
+		child.stdout.setEncoding('utf8');
+		child.stderr.setEncoding('utf8');
+		child.stdout.on('data', (chunk: string) => {
+			stdout += chunk;
+		});
+		child.stderr.on('data', (chunk: string) => {
+			stderr += chunk;
+		});
+		child.once('error', reject);
+		child.once('close', (exitCode) => {
+			resolve({ exitCode: exitCode ?? 1, stderr, stdout });
+		});
+	});
 }
