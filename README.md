@@ -2,8 +2,8 @@
 
 面向 Linux 的硬件无关灯光状态引擎、配置界面与 Agent 集成。首个生产 backend 通过 `asusd` 支持 ROG Aura 与 Slash，后续可以接入外置 RGB 灯等其他设备。
 
-项目目前已完成 P6 Desktop 和 P7 的 Codex/OpenCode 接入软件实现；打包发布仍留在
-P8。详细设计、当前进度与实施顺序见：
+项目目前已完成 P6 Desktop、P7 Codex/OpenCode 接入，以及 P8 的 Linux/AUR
+打包发布工具；正式发布前仍需完成干净环境安装和硬件验收。详细设计、当前进度与实施顺序见：
 
 - [技术规划](docs/technical-plan.md)
 - [开发路线图](docs/development-roadmap.md)
@@ -180,6 +180,41 @@ yarn tiny probe/hardware/slash
 ```
 
 真实写入必须按 [P0 外部依赖验证](docs/p0-validation.md) 显式解锁。
+
+## 打包与发布
+
+发布流程与 VoxSpell 保持一致。统一修改根包和所有 workspace 的版本号：
+
+```bash
+yarn tiny version
+# 或非交互执行
+node scripts/update-version.mts 0.1.0
+```
+
+只构建 Linux x86_64 二进制归档，不执行外部发布：
+
+```bash
+yarn tiny linux/build
+```
+
+基于同一归档构建本地 pacman 包和 AUR 元数据：
+
+```bash
+yarn tiny aur/build
+```
+
+发布 GitHub Release，或继续发布 AUR：
+
+```bash
+yarn tiny linux
+yarn tiny aur
+```
+
+外部发布要求工作区干净、`v<version>` 指向当前提交且已推送到 `origin`，并且
+GitHub CLI 已登录。发布流程不依赖 CI。产物写入 `dist/release/`；Linux 归档携带
+固定 Node.js 24 runtime 和匹配 ABI 的 node-gtk，系统仍需提供 GTK4、libadwaita、
+GObject Introspection 和 Cairo。`asusctl` 是 AUR 可选依赖，由运行时能力发现决定
+是否启用 asusd 硬件后端。
 
 ## 作者与许可
 

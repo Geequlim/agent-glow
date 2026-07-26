@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AgentGlow
+GenericName=Agent Lighting
+Comment=Display Agent activity through hardware lighting
+Exec=agent-glow-desktop
+Icon=io.github.geequlim.AgentGlow
+Terminal=false
+Categories=Settings;
+StartupNotify=true
+StartupWMClass=io.github.geequlim.AgentGlow

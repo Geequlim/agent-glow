@@ -452,11 +452,11 @@ P7 的软件实现已完成。剩余真实试用必须由用户在桌面界面�
 
 ### 11.1 任务
 
-- [ ] 生成 Linux staging root、可执行入口、systemd unit、desktop entry、图标和许可证。
-- [ ] 固定并验证 Node.js runtime 与 `node-gtk` ABI。
-- [ ] 生成可复现的 x86_64 `tar.zst` 和 SHA-256。
-- [ ] 编写 `agent-glow-bin` 的 `PKGBUILD` 与 `.SRCINFO`。
-- [ ] 建立版本一致性、干净工作区、测试、构建、smoke 和标签门禁。
+- [x] 生成 Linux staging root、可执行入口、systemd unit、desktop entry、图标和许可证。
+- [x] 固定并验证 Node.js runtime 与 `node-gtk` ABI。
+- [x] 生成可复现的 x86_64 `tar.zst` 和 SHA-256。
+- [x] 编写 `agent-glow-bin` 的 `PKGBUILD` 与 `.SRCINFO` 生成流程。
+- [x] 建立版本一致性、干净工作区、测试、构建、smoke 和标签门禁。
 - [ ] 在干净环境执行安装、首次启动、升级、停止、卸载和残留检查。
 - [ ] 完成 GU405AR 十项硬件验收。
 - [ ] 编写支持矩阵、已知限制、故障排查和恢复说明。
