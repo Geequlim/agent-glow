@@ -48,6 +48,7 @@ import {
 	createFileConfigRepository,
 	type DaemonConfigRepository,
 } from './config.js';
+import { type PowerSourceMonitor, SysfsPowerSourceMonitor } from './power-source-monitor.js';
 import { resolveSocketPath } from './socket-path.js';
 
 export interface DaemonServer {
@@ -57,6 +58,7 @@ export interface DaemonServer {
 
 export interface DaemonServerOptions {
 	readonly configRepository?: DaemonConfigRepository;
+	readonly powerSourceMonitor?: PowerSourceMonitor;
 	readonly shutdownTimeoutMs?: number;
 }
 
@@ -88,6 +90,9 @@ export async function startDaemonServer(
 
 	const configRepository = options.configRepository ?? createFileConfigRepository();
 	let config = validateConfigValue(structuredClone(await configRepository.load()));
+	const powerSourceMonitor = options.powerSourceMonitor ?? new SysfsPowerSourceMonitor();
+	let onBattery = await powerSourceMonitor.isOnBattery();
+	let powerSavingActive = config.daemon.powerSavingMode && onBattery;
 	const arbiter = new LeaseArbiter(
 		undefined,
 		config.daemon.staleSessionTimeoutMs,
@@ -300,7 +305,7 @@ export async function startDaemonServer(
 		const candidate = validateConfigValue(structuredClone(candidateValue));
 		const plans = await buildDeviceConfigurationPlans(candidate, devices);
 		const prepared = await configRepository.prepare(candidate);
-		const resumeDelivery = !lifecyclePaused && displayedState !== 'idle';
+		const resumeDelivery = !lifecyclePaused && !powerSavingActive && displayedState !== 'idle';
 		let deviceConfigurationApplied = false;
 		await scheduler.pause();
 		try {
@@ -314,8 +319,8 @@ export async function startDaemonServer(
 			}
 			await captureError(() => prepared.discard(), rollbackErrors);
 			scheduler.invalidate();
-			if (displayedState !== 'idle') submitFrame(visualEngine.frame());
-			if (resumeDelivery && !lifecyclePaused) scheduler.resume();
+			if (!powerSavingActive && displayedState !== 'idle') submitFrame(visualEngine.frame());
+			if (resumeDelivery && !lifecyclePaused && !powerSavingActive) scheduler.resume();
 			if (rollbackErrors.length > 0) {
 				throw new AggregateError(
 					[error, ...rollbackErrors],
@@ -329,28 +334,36 @@ export async function startDaemonServer(
 		config = candidate;
 		arbiter.setRetainedStateTtlMs(config.daemon.retainedStateTimeoutMs);
 		arbiter.setStaleLeaseTtlMs(config.daemon.staleSessionTimeoutMs);
-		const currentState = currentVisualState();
 		visualEngine.setTransitionDurationMs(config.rendering.transitionMs);
-		if (
-			currentState !== 'idle' &&
-			!isDeepStrictEqual(previousConfig.profiles[currentState], config.profiles[currentState])
-		) {
-			visualEngine.reconfigure(
-				configuredVisualEffect(config, currentState),
-				config.rendering.transitionMs,
-			);
-		}
-		displayedState = currentState;
-		scheduler.invalidate();
-		if (currentState !== 'idle') await restoreNewlyDisabledDevices(plans);
-		if (currentState !== 'idle') {
-			submitFrame(visualEngine.frame());
-			if (resumeDelivery && !lifecyclePaused) scheduler.resume();
+		const powerStateChanged = await synchronizePowerSaving('configuration');
+		const currentState = currentVisualState();
+		if (!powerStateChanged && !powerSavingActive) {
+			if (
+				currentState !== 'idle' &&
+				!isDeepStrictEqual(
+					previousConfig.profiles[currentState],
+					config.profiles[currentState],
+				)
+			) {
+				visualEngine.reconfigure(
+					configuredVisualEffect(config, currentState),
+					config.rendering.transitionMs,
+				);
+			}
+			displayedState = currentState;
+			scheduler.invalidate();
+			if (currentState !== 'idle') await restoreNewlyDisabledDevices(plans);
+			if (currentState !== 'idle') {
+				submitFrame(visualEngine.frame());
+				if (resumeDelivery && !lifecyclePaused) scheduler.resume();
+			}
 		}
 		await scheduler.flush();
 		startAnimationTimer();
 		console.log(`[agent-glow] configuration updated version=${config.version}`);
-		if (currentState === 'idle') {
+		if (powerSavingActive) {
+			console.log('[agent-glow] effects skipped reason=power-saving onBattery=true');
+		} else if (currentState === 'idle') {
 			console.log(`[agent-glow] state=idle mode=system-default backend=${backend.id}`);
 		} else {
 			console.log(
@@ -480,6 +493,7 @@ export async function startDaemonServer(
 		state: ReturnType<LeaseArbiter['currentState']>,
 		restart = false,
 	): Promise<void> {
+		if (powerSavingActive) return;
 		if (state === 'idle') {
 			await scheduler.pause();
 			if (!lifecyclePaused) await restoreBackendSnapshots(backend, snapshots);
@@ -573,6 +587,31 @@ export async function startDaemonServer(
 		}
 	}
 
+	async function synchronizePowerSaving(reason: string): Promise<boolean> {
+		const next = config.daemon.powerSavingMode && onBattery;
+		if (next === powerSavingActive) return false;
+		powerSavingActive = next;
+		scheduler.invalidate();
+		if (powerSavingActive) {
+			await scheduler.pause();
+			if (!lifecyclePaused && displayedState !== 'idle') {
+				await restoreBackendSnapshots(backend, snapshots);
+			}
+			displayedState = 'idle';
+			console.log(`[agent-glow] power saving active reason=${reason}`);
+		} else {
+			console.log(`[agent-glow] power saving inactive reason=${reason}`);
+			if (!lifecyclePaused) await displayState(currentVisualState());
+		}
+		return true;
+	}
+
+	async function handlePowerSourceChange(nextOnBattery: boolean): Promise<void> {
+		if (closing || nextOnBattery === onBattery) return;
+		onBattery = nextOnBattery;
+		await synchronizePowerSaving('power-source');
+	}
+
 	async function handleLifecycleEvent(event: BackendLifecycleEvent): Promise<void> {
 		if (closing) return;
 		if (event.type === 'availability' && !event.available) {
@@ -611,13 +650,19 @@ export async function startDaemonServer(
 		snapshots = refreshedSnapshots;
 		scheduler.invalidate();
 		lifecyclePaused = false;
-		if (currentVisualState() === 'idle') {
+		if (powerSavingActive || currentVisualState() === 'idle') {
 			await scheduler.pause();
 			if (reason !== 'startup') await restoreBackendSnapshots(backend, snapshots);
 			displayedState = 'idle';
-			console.log(
-				`[agent-glow] state=idle mode=system-default backend=${backend.id} reason=${reason}`,
-			);
+			if (powerSavingActive) {
+				console.log(
+					`[agent-glow] effects skipped reason=power-saving backend=${backend.id}`,
+				);
+			} else {
+				console.log(
+					`[agent-glow] state=idle mode=system-default backend=${backend.id} reason=${reason}`,
+				);
+			}
 		} else {
 			scheduler.resume();
 			submitFrame(visualEngine.frame());
@@ -638,6 +683,17 @@ export async function startDaemonServer(
 					}`,
 				);
 			});
+	});
+	const stopPowerSourceWatch = powerSourceMonitor.watch((nextOnBattery) => {
+		void enqueueConfigTransaction(() => handlePowerSourceChange(nextOnBattery)).catch(
+			(error: unknown) => {
+				console.error(
+					`[agent-glow] power source handling failed error=${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			},
+		);
 	});
 	await listen(server, socketPath);
 	await chmod(socketPath, 0o600);
@@ -661,7 +717,7 @@ export async function startDaemonServer(
 	}
 
 	function animate(): void {
-		if (lifecyclePaused) return;
+		if (lifecyclePaused || powerSavingActive) return;
 		const currentState = currentVisualState();
 		const changed = currentState !== displayedState;
 		if (changed) {
@@ -705,6 +761,7 @@ export async function startDaemonServer(
 				const errors: unknown[] = [];
 				closing = true;
 				stopLifecycleWatch?.();
+				stopPowerSourceWatch();
 				if (animationTimer) clearInterval(animationTimer);
 				animationTimer = undefined;
 				if (previewTimer) clearTimeout(previewTimer);

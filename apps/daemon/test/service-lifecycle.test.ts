@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DaemonConfigRepository } from '../src/config.js';
 import { startDaemonServer } from '../src/server.js';
+import type { PowerSourceMonitor } from '../src/power-source-monitor.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -224,6 +225,46 @@ describe('P5 service lifecycle', () => {
 		).toMatchObject({ currentState: 'working' });
 		await daemon.close();
 	});
+
+	it('restores system lighting on battery and resumes the latest state when allowed', async () => {
+		const backend = new LifecycleBackend(true);
+		const power = new FakePowerSourceMonitor(false);
+		const daemon = await startTestDaemon(backend, undefined, 0, undefined, power);
+		const session = { source: 'test', sessionId: 'power-saving' };
+		await request(daemon.socketPath, 'event.emit', {
+			event: { version: 1, ...session, state: 'working', phase: 'enter' },
+		});
+		const restoresBeforeBattery = backend.restoreAttempts;
+
+		power.setOnBattery(true);
+		await waitFor(() => backend.restoreAttempts > restoresBeforeBattery);
+		const commitsWhileSuppressed = backend.commits.length;
+		await request(daemon.socketPath, 'event.emit', {
+			event: { version: 1, ...session, state: 'tool_use', phase: 'enter' },
+		});
+		await delay(100);
+		expect(backend.commits).toHaveLength(commitsWhileSuppressed);
+
+		const disabled = (await request(daemon.socketPath, 'config.get', {})) as AgentGlowConfig;
+		disabled.daemon.powerSavingMode = false;
+		await request(daemon.socketPath, 'config.update', { config: disabled });
+		expect(backend.commits.at(-1)?.semanticState).toBe('tool_use');
+
+		const enabled = structuredClone(disabled);
+		enabled.daemon.powerSavingMode = true;
+		const restoresBeforeEnable = backend.restoreAttempts;
+		await request(daemon.socketPath, 'config.update', { config: enabled });
+		expect(backend.restoreAttempts).toBeGreaterThan(restoresBeforeEnable);
+
+		const commitsBeforeAc = backend.commits.length;
+		power.setOnBattery(false);
+		await waitFor(
+			() =>
+				backend.commits.length > commitsBeforeAc &&
+				backend.commits.at(-1)?.semanticState === 'tool_use',
+		);
+		await daemon.close();
+	});
 });
 
 class LifecycleBackend implements LightingBackend {
@@ -324,16 +365,43 @@ class MemoryConfigRepository implements DaemonConfigRepository {
 	}
 }
 
+class FakePowerSourceMonitor implements PowerSourceMonitor {
+	#listener: ((onBattery: boolean) => void) | undefined;
+	#onBattery: boolean;
+
+	constructor(onBattery: boolean) {
+		this.#onBattery = onBattery;
+	}
+
+	async isOnBattery(): Promise<boolean> {
+		return this.#onBattery;
+	}
+
+	watch(listener: (onBattery: boolean) => void): () => void {
+		this.#listener = listener;
+		return () => {
+			this.#listener = undefined;
+		};
+	}
+
+	setOnBattery(onBattery: boolean): void {
+		this.#onBattery = onBattery;
+		this.#listener?.(onBattery);
+	}
+}
+
 async function startTestDaemon(
 	backend: LightingBackend,
 	shutdownTimeoutMs?: number,
 	minimumVisibleMs?: number,
 	retainedStateTimeoutMs?: number,
+	powerSourceMonitor: PowerSourceMonitor = new FakePowerSourceMonitor(false),
 ) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'agent-glow-service-lifecycle-'));
 	temporaryDirectories.push(directory);
 	return startDaemonServer('test', path.join(directory, 'runtime', 'daemon.sock'), backend, {
 		configRepository: new MemoryConfigRepository(minimumVisibleMs, retainedStateTimeoutMs),
+		powerSourceMonitor,
 		...(shutdownTimeoutMs === undefined ? {} : { shutdownTimeoutMs }),
 	});
 }

@@ -246,6 +246,11 @@ export class DesktopState {
 		this.#scheduleConfig();
 	}
 
+	updatePowerSavingMode(enabled: boolean): void {
+		this.config.daemon.powerSavingMode = enabled;
+		this.#scheduleConfig();
+	}
+
 	restoreDefaultStyles(): void {
 		const defaults = createDefaultConfig();
 		this.config.profiles = structuredClone(defaults.profiles);

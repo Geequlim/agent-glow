@@ -74,6 +74,7 @@ export const AgentGlowConfigSchema = Type.Object(
 		daemon: Type.Object(
 			{
 				frameRate: Type.Integer({ minimum: 5, maximum: 20 }),
+				powerSavingMode: Type.Boolean(),
 				retainedStateTimeoutMs: Type.Integer({
 					minimum: 1000,
 					maximum: 86_400_000,

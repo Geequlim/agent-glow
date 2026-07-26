@@ -140,6 +140,7 @@ const validConfig = {
 	version: 1,
 	daemon: {
 		frameRate: 10,
+		powerSavingMode: true,
 		retainedStateTimeoutMs: 600_000,
 		staleSessionTimeoutMs: 300_000,
 	},

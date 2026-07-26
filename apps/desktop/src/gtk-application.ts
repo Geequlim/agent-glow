@@ -153,6 +153,16 @@ function createOverviewPage(
 		if (!state.serviceBusy && serviceRow.active !== enabled)
 			void state.setServiceEnabled(serviceRow.active);
 	});
+	const powerSavingRow = new Adw.SwitchRow({
+		title: '省电模式',
+		subtitle: '使用电池供电时暂停所有灯效。',
+	});
+	let syncingPowerSaving = false;
+	powerSavingRow.on('notify::active', () => {
+		if (!syncingPowerSaving && powerSavingRow.active !== state.config.daemon.powerSavingMode) {
+			state.updatePowerSavingMode(powerSavingRow.active);
+		}
+	});
 	const activityRow = new Adw.ActionRow({ title: '当前活动' });
 	const deviceRow = new Adw.ActionRow({ title: '已发现设备' });
 	const saveRow = new Adw.ActionRow({ title: '配置状态' });
@@ -178,6 +188,7 @@ function createOverviewPage(
 		description: '所有设置修改都会自动生效。',
 	});
 	group.add(serviceRow);
+	group.add(powerSavingRow);
 	group.add(activityRow);
 	group.add(deviceRow);
 	group.add(saveRow);
@@ -238,6 +249,10 @@ function createOverviewPage(
 				: state.service.enabled === state.service.running
 					? '同时控制后台服务与登录后自动启动。'
 					: '服务状态不一致，切换一次即可统一修正。';
+			syncingPowerSaving = true;
+			powerSavingRow.active = state.config.daemon.powerSavingMode;
+			powerSavingRow.sensitive = state.service.running && !state.configSaving;
+			syncingPowerSaving = false;
 			activityRow.subtitle = state.daemon
 				? state.daemon.currentState === 'idle'
 					? '当前没有活动任务'
