@@ -20,7 +20,18 @@ export interface BreatheVisualEffect {
 	readonly semanticState: SemanticState;
 }
 
-export type SemanticVisualEffect = StaticVisualEffect | BreatheVisualEffect;
+export interface PulseVisualEffect {
+	readonly color: RgbColor;
+	readonly durationMs: number;
+	readonly effect: 'pulse';
+	readonly hardwareIntensity: number;
+	readonly maximumIntensity: number;
+	readonly minimumIntensity: number;
+	readonly pulseCount: number;
+	readonly semanticState: SemanticState;
+}
+
+export type SemanticVisualEffect = StaticVisualEffect | BreatheVisualEffect | PulseVisualEffect;
 
 const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 	idle: {
@@ -47,10 +58,13 @@ const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 		semanticState: 'working',
 	},
 	success: {
-		effect: 'static',
+		effect: 'pulse',
 		color: { red: 53, green: 199, blue: 89 },
+		durationMs: 900,
 		hardwareIntensity: 0.9,
-		intensity: 1,
+		minimumIntensity: 0.15,
+		maximumIntensity: 1,
+		pulseCount: 1,
 		semanticState: 'success',
 	},
 	waiting_permission: {
@@ -63,10 +77,13 @@ const visualEffects: Readonly<Record<SemanticState, SemanticVisualEffect>> = {
 		semanticState: 'waiting_permission',
 	},
 	error: {
-		effect: 'static',
+		effect: 'pulse',
 		color: { red: 255, green: 59, blue: 48 },
+		durationMs: 1000,
 		hardwareIntensity: 1,
-		intensity: 1,
+		minimumIntensity: 0.15,
+		maximumIntensity: 1,
+		pulseCount: 2,
 		semanticState: 'error',
 	},
 };
@@ -88,8 +105,11 @@ export function renderVisualFrame(
 		};
 	}
 
-	const phase = (Math.max(0, elapsedMilliseconds) % effect.periodMs) / effect.periodMs;
-	const progress = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+	const elapsed = Math.max(0, elapsedMilliseconds);
+	const progress =
+		effect.effect === 'breathe'
+			? (1 - Math.cos(((elapsed % effect.periodMs) / effect.periodMs) * Math.PI * 2)) / 2
+			: Math.sin(Math.min(1, elapsed / effect.durationMs) * Math.PI * effect.pulseCount) ** 2;
 	return {
 		color: effect.color,
 		hardwareIntensity: effect.hardwareIntensity,

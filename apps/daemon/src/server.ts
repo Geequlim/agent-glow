@@ -2,14 +2,25 @@ import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { createServer, type Server, type Socket } from 'node:net';
 import path from 'node:path';
 
-import type { BackendSnapshot, LightingBackend } from '@agent-glow/core/backend';
+import type {
+	BackendApplyResult,
+	BackendLifecycleEvent,
+	BackendSnapshot,
+	LightingBackend,
+	StaticVisualState,
+} from '@agent-glow/core/backend';
 import { mergeDeviceConfiguration } from '@agent-glow/core/device-configuration';
+import {
+	LatestValueScheduler,
+	staticVisualStateFingerprint,
+} from '@agent-glow/core/latest-value-scheduler';
 import { LeaseArbiter } from '@agent-glow/core/lease-arbiter';
 import {
 	getSemanticVisualEffect,
 	renderVisualFrame,
 	type SemanticVisualEffect,
 } from '@agent-glow/core/semantic-visual-state';
+import { VisualStateEngine } from '@agent-glow/core/visual-state-engine';
 import type { DeviceDescriptor } from '@agent-glow/protocol/device';
 import {
 	isProtocolMessageWithinLimit,
@@ -37,11 +48,15 @@ export async function startDaemonServer(
 	await prepareSocketPath(socketPath);
 
 	const arbiter = new LeaseArbiter();
+	const visualEngine = new VisualStateEngine(getSemanticVisualEffect('idle'));
 	const sockets = new Set<Socket>();
 	let activeRequests = 0;
-	let animationGeneration = 0;
 	let animationTimer: NodeJS.Timeout | undefined;
-	let frameWrite: Promise<void> | undefined;
+	let closing = false;
+	let devices: readonly DeviceDescriptor[] = [];
+	let displayedState: ReturnType<LeaseArbiter['currentState']> = 'idle';
+	let lifecyclePaused = false;
+	let lifecycleQueue = Promise.resolve();
 	let snapshots: readonly BackendSnapshot[];
 	const deviceDiagnostics = new Map<
 		string,
@@ -54,16 +69,20 @@ export async function startDaemonServer(
 		}
 	>();
 	const lastDegradationReasons = new Map<string, string>();
-
+	const scheduler = new LatestValueScheduler<string, StaticVisualState, BackendApplyResult>({
+		commit: (deviceId, visualState) => backend.applyVisualState(deviceId, visualState),
+		fingerprint: staticVisualStateFingerprint,
+		onResult: recordApplyResult,
+		onError: recordApplyError,
+	});
 	try {
-		const devices = await backend.discoverDevices();
+		devices = await backend.discoverDevices();
 		snapshots = await Promise.all(devices.map((device) => backend.captureSnapshot(device.id)));
 		await displayState('idle');
 	} catch (error) {
 		await backend.close();
 		throw error;
 	}
-
 	const server = createServer((socket) => {
 		sockets.add(socket);
 		socket.setEncoding('utf8');
@@ -133,11 +152,11 @@ export async function startDaemonServer(
 				const current = await backend.getDeviceConfiguration(request.params.deviceId);
 				const updated = mergeDeviceConfiguration(current, request.params.values);
 				await backend.updateDeviceConfiguration(request.params.deviceId, updated.values);
+				scheduler.invalidate(request.params.deviceId);
 				await displayState(arbiter.currentState());
 				return updated;
 			}
 			case 'diagnostics.get': {
-				const devices = await backend.discoverDevices();
 				return {
 					backend: { id: backend.id, health: backend.getHealth() },
 					devices: devices.map((device) => ({
@@ -148,7 +167,7 @@ export async function startDaemonServer(
 			}
 			case 'event.emit': {
 				const currentState = arbiter.apply(request.params.event);
-				await displayState(currentState);
+				await displayState(currentState, request.params.event.phase === 'pulse');
 				return { accepted: true, currentState };
 			}
 			case 'event.clear': {
@@ -163,92 +182,135 @@ export async function startDaemonServer(
 		}
 	}
 
-	async function displayState(state: ReturnType<LeaseArbiter['currentState']>): Promise<void> {
-		stopAnimation();
-		if (frameWrite) await frameWrite;
-
-		const effect = getSemanticVisualEffect(state);
-		const devices = await backend.discoverDevices();
-		await commitFrame(devices, renderVisualFrame(effect, 0));
-		console.log(formatEffectLog(state, effect, backend.id, devices.length));
-
-		if (effect.effect === 'static') return;
-
-		const startedAt = performance.now();
-		const generation = animationGeneration;
-		animationTimer = setInterval(() => {
-			if (generation !== animationGeneration || frameWrite) return;
-			frameWrite = commitFrame(
-				devices,
-				renderVisualFrame(effect, performance.now() - startedAt),
-			)
-				.catch((error: unknown) => {
-					console.error(
-						`[agent-glow] animation stopped: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-					stopAnimation();
-				})
-				.finally(() => {
-					frameWrite = undefined;
-				});
-		}, ANIMATION_FRAME_INTERVAL_MS);
-	}
-
-	async function commitFrame(
-		devices: readonly DeviceDescriptor[],
-		visualState: ReturnType<typeof renderVisualFrame>,
+	async function displayState(
+		state: ReturnType<LeaseArbiter['currentState']>,
+		restart = false,
 	): Promise<void> {
-		let appliedDevices = 0;
-		for (const device of devices) {
-			try {
-				const result = await backend.applyVisualState(device.id, visualState);
-				appliedDevices += 1;
-				deviceDiagnostics.set(device.id, {
-					status: result.degraded ? 'degraded' : 'ok',
-					requested: result.requested,
-					applied: result.applied,
-					...(result.details ? { details: result.details } : {}),
-					...(result.reason ? { reason: result.reason } : {}),
-				});
-				if (result.degraded) {
-					const reason = result.reason ?? 'unspecified';
-					if (lastDegradationReasons.get(device.id) !== reason) {
-						console.warn(
-							`[agent-glow] device degraded device=${device.id} reason=${reason}`,
-						);
-						lastDegradationReasons.set(device.id, reason);
-					}
-				} else {
-					lastDegradationReasons.delete(device.id);
-				}
-			} catch (error) {
-				const reason = error instanceof Error ? error.message : String(error);
-				deviceDiagnostics.set(device.id, { status: 'error', reason });
-				console.error(
-					`[agent-glow] device apply failed device=${device.id} error=${reason}`,
-				);
-			}
-		}
-		if (appliedDevices === 0) throw new Error('No lighting device accepted the visual state');
+		const effect = getSemanticVisualEffect(state);
+		visualEngine.setTarget(effect, restart);
+		displayedState = state;
+		submitFrame(visualEngine.frame());
+		await scheduler.flush();
+		console.log(formatEffectLog(state, effect, backend.id, devices.length));
 	}
 
-	function stopAnimation(): void {
-		animationGeneration += 1;
-		if (animationTimer) clearInterval(animationTimer);
-		animationTimer = undefined;
+	function submitFrame(visualState: StaticVisualState): void {
+		for (const device of devices) scheduler.submit(device.id, visualState);
+	}
+
+	function recordApplyResult(deviceId: string, result: BackendApplyResult): void {
+		deviceDiagnostics.set(deviceId, {
+			status: result.degraded ? 'degraded' : 'ok',
+			requested: result.requested,
+			applied: result.applied,
+			...(result.details ? { details: result.details } : {}),
+			...(result.reason ? { reason: result.reason } : {}),
+		});
+		if (result.degraded) {
+			const reason = result.reason ?? 'unspecified';
+			if (lastDegradationReasons.get(deviceId) !== reason) {
+				console.warn(`[agent-glow] device degraded device=${deviceId} reason=${reason}`);
+				lastDegradationReasons.set(deviceId, reason);
+			}
+		} else {
+			lastDegradationReasons.delete(deviceId);
+		}
+	}
+
+	function recordApplyError(
+		deviceId: string,
+		error: unknown,
+		consecutiveFailures: number,
+		retryDelayMs: number,
+	): void {
+		const reason = error instanceof Error ? error.message : String(error);
+		deviceDiagnostics.set(deviceId, { status: 'error', reason });
+		if (consecutiveFailures === 1 || isPowerOfTwo(consecutiveFailures)) {
+			console.error(
+				`[agent-glow] device apply failed device=${deviceId} failures=${consecutiveFailures} retryMs=${retryDelayMs} error=${reason}`,
+			);
+		}
+	}
+
+	async function handleLifecycleEvent(event: BackendLifecycleEvent): Promise<void> {
+		if (closing) return;
+		if (event.type === 'availability' && !event.available) {
+			lifecyclePaused = true;
+			await scheduler.pause();
+			for (const device of devices) {
+				deviceDiagnostics.set(device.id, {
+					status: 'error',
+					reason: 'Backend service unavailable',
+				});
+			}
+			console.warn(`[agent-glow] backend unavailable backend=${backend.id}`);
+			return;
+		}
+		if (event.type === 'sleep' && event.sleeping) {
+			lifecyclePaused = true;
+			await scheduler.pause();
+			await restoreBackendSnapshots(backend, snapshots);
+			console.log(`[agent-glow] suspended backend=${backend.id}`);
+			return;
+		}
+		await refreshDevices(event.type === 'sleep' ? 'resume' : 'service-restored');
+	}
+
+	async function refreshDevices(reason: string): Promise<void> {
+		devices = await backend.discoverDevices();
+		snapshots = await Promise.all(devices.map((device) => backend.captureSnapshot(device.id)));
+		scheduler.invalidate();
+		lifecyclePaused = false;
+		scheduler.resume();
+		submitFrame(visualEngine.frame());
+		await scheduler.flush();
+		console.log(
+			`[agent-glow] backend refreshed backend=${backend.id} reason=${reason} devices=${devices.length}`,
+		);
 	}
 
 	await listen(server, socketPath);
 	await chmod(socketPath, 0o600);
+	const stopLifecycleWatch = backend.watchLifecycle?.((event) => {
+		lifecycleQueue = lifecycleQueue
+			.then(() => handleLifecycleEvent(event))
+			.catch((error: unknown) => {
+				console.error(
+					`[agent-glow] backend lifecycle handling failed error=${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			});
+	});
+	animationTimer = setInterval(() => {
+		if (lifecyclePaused) return;
+		const currentState = arbiter.currentState();
+		const changed = currentState !== displayedState;
+		if (changed) {
+			visualEngine.setTarget(getSemanticVisualEffect(currentState));
+			displayedState = currentState;
+			console.log(
+				formatEffectLog(
+					currentState,
+					getSemanticVisualEffect(currentState),
+					backend.id,
+					devices.length,
+				),
+			);
+		}
+		if (changed || visualEngine.isAnimating()) submitFrame(visualEngine.frame());
+	}, ANIMATION_FRAME_INTERVAL_MS);
 
 	return {
 		socketPath,
 		close: async () => {
 			const errors: unknown[] = [];
-			stopAnimation();
-			if (frameWrite) await captureError(() => frameWrite as Promise<void>, errors);
+			closing = true;
+			stopLifecycleWatch?.();
+			if (animationTimer) clearInterval(animationTimer);
+			animationTimer = undefined;
+			await captureError(() => lifecycleQueue, errors);
+			await captureError(() => scheduler.close(), errors);
 			for (const socket of sockets) socket.destroy();
 			await captureError(() => closeServer(server), errors);
 			await captureError(() => restoreBackendSnapshots(backend, snapshots), errors);
@@ -374,6 +436,10 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 	return error instanceof Error && 'code' in error;
 }
 
+function isPowerOfTwo(value: number): boolean {
+	return value > 0 && (value & (value - 1)) === 0;
+}
+
 async function captureError(operation: () => Promise<void>, errors: unknown[]): Promise<void> {
 	try {
 		await operation();
@@ -403,5 +469,7 @@ function formatEffectLog(
 	)} rgbBrightness=software-scale hardwareBrightness=${effect.hardwareIntensity} backend=${backendId} devices=${deviceCount}`;
 	if (effect.effect === 'static')
 		return `[agent-glow] displaying ${common} intensity=${effect.intensity}`;
-	return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} periodMs=${effect.periodMs} fps=${1000 / ANIMATION_FRAME_INTERVAL_MS}`;
+	if (effect.effect === 'breathe')
+		return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} periodMs=${effect.periodMs} fps=${1000 / ANIMATION_FRAME_INTERVAL_MS}`;
+	return `[agent-glow] displaying ${common} intensity=${effect.minimumIntensity}..${effect.maximumIntensity} pulses=${effect.pulseCount} durationMs=${effect.durationMs} fps=${1000 / ANIMATION_FRAME_INTERVAL_MS}`;
 }

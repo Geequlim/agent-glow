@@ -4,6 +4,7 @@ import type { SemanticState } from '@agent-glow/protocol/semantic-state';
 import { selectHighestPriorityState } from './state-priority.js';
 
 export const DEFAULT_PULSE_TTL_MS = 1500;
+export const DEFAULT_STALE_LEASE_TTL_MS = 5 * 60 * 1000;
 
 export interface MonotonicClock {
 	now(): number;
@@ -36,12 +37,13 @@ export class LeaseArbiter {
 			this.#leases.delete(key);
 		} else {
 			const ttlMs =
-				event.ttlMs ?? (event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : undefined);
+				event.ttlMs ??
+				(event.phase === 'pulse' ? DEFAULT_PULSE_TTL_MS : DEFAULT_STALE_LEASE_TTL_MS);
 			this.#leases.set(key, {
 				source: event.source,
 				sessionId: event.sessionId,
 				state: event.state,
-				expiresAt: ttlMs === undefined ? undefined : this.#clock.now() + ttlMs,
+				expiresAt: this.#clock.now() + ttlMs,
 			});
 		}
 

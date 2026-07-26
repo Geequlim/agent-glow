@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { AsusdLightingBackend } from '../src/backend.js';
-import type { AsusdTransport, DbusProperty, ManagedObject } from '../src/transport.js';
+import type {
+	AsusdLifecycleEvent,
+	AsusdTransport,
+	DbusProperty,
+	ManagedObject,
+} from '../src/transport.js';
 
 const auraPath = '/xyz/ljones/aura/19b6_4_5';
 const initialModeData: DbusProperty = {
@@ -22,8 +27,11 @@ class FixtureTransport implements AsusdTransport {
 	slash: Record<string, DbusProperty> = structuredClone(initialSlashProperties);
 	closed = false;
 	failSlashMode = false;
+	lifecycleListener: ((event: AsusdLifecycleEvent) => void) | undefined;
+	managedObjectReads = 0;
 
 	async readManagedObjects(): Promise<readonly ManagedObject[]> {
+		this.managedObjectReads += 1;
 		return [
 			{
 				path: auraPath,
@@ -78,6 +86,17 @@ class FixtureTransport implements AsusdTransport {
 
 	close(): void {
 		this.closed = true;
+	}
+
+	watchLifecycle(listener: (event: AsusdLifecycleEvent) => void): () => void {
+		this.lifecycleListener = listener;
+		return () => {
+			this.lifecycleListener = undefined;
+		};
+	}
+
+	emitLifecycle(event: AsusdLifecycleEvent): void {
+		this.lifecycleListener?.(event);
 	}
 }
 
@@ -271,5 +290,30 @@ describe('AsusdLightingBackend', () => {
 
 		expect(transport.closed).toBe(true);
 		expect(backend.getHealth()).toBe('unavailable');
+	});
+
+	it('invalidates discovery and reports lifecycle changes after service restart', async () => {
+		const transport = new FixtureTransport();
+		const backend = new AsusdLightingBackend(transport);
+		const events: AsusdLifecycleEvent[] = [];
+		backend.watchLifecycle((event) => events.push(event));
+		await backend.discoverDevices();
+
+		transport.emitLifecycle({ type: 'availability', available: false });
+		expect(backend.getHealth()).toBe('unavailable');
+		await expect(backend.discoverDevices()).rejects.toThrow('service is unavailable');
+
+		transport.emitLifecycle({ type: 'availability', available: true });
+		await backend.discoverDevices();
+		transport.emitLifecycle({ type: 'sleep', sleeping: true });
+		transport.emitLifecycle({ type: 'sleep', sleeping: false });
+
+		expect(transport.managedObjectReads).toBe(2);
+		expect(events).toEqual([
+			{ type: 'availability', available: false },
+			{ type: 'availability', available: true },
+			{ type: 'sleep', sleeping: true },
+			{ type: 'sleep', sleeping: false },
+		]);
 	});
 });

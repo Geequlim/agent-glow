@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type {
 	BackendApplyResult,
+	BackendLifecycleEvent,
 	BackendSnapshot,
 	LightingBackend,
 	StaticVisualState,
@@ -97,7 +98,10 @@ export class AsusdLightingBackend implements LightingBackend {
 	readonly #lastSlashState = new Map<string, string>();
 	readonly #slashModeWritable = new Map<string, boolean>();
 	readonly #slashConfiguration = new Map<string, DeviceConfigurationValues>();
+	readonly #lifecycleListeners = new Set<(event: BackendLifecycleEvent) => void>();
+	readonly #stopLifecycleWatch: (() => void) | undefined;
 	#devices: readonly AsusdDevice[] | undefined;
+	#available = true;
 	#closed = false;
 
 	constructor(
@@ -106,10 +110,20 @@ export class AsusdLightingBackend implements LightingBackend {
 	) {
 		this.#transport = transport;
 		this.#deviceKind = deviceKind;
+		this.#stopLifecycleWatch = transport.watchLifecycle?.((event) => {
+			if (event.type === 'availability') {
+				this.#available = event.available;
+				this.#devices = undefined;
+				this.#lastSlashState.clear();
+				this.#lastSlashResult.clear();
+				this.#slashModeWritable.clear();
+			}
+			for (const listener of this.#lifecycleListeners) listener(event);
+		});
 	}
 
 	getHealth(): 'healthy' | 'unavailable' {
-		return this.#closed ? 'unavailable' : 'healthy';
+		return this.#closed || !this.#available ? 'unavailable' : 'healthy';
 	}
 
 	async discoverDevices(): Promise<readonly DeviceDescriptor[]> {
@@ -252,11 +266,19 @@ export class AsusdLightingBackend implements LightingBackend {
 	async close(): Promise<void> {
 		if (this.#closed) return;
 		this.#closed = true;
+		this.#stopLifecycleWatch?.();
+		this.#lifecycleListeners.clear();
 		this.#transport.close();
+	}
+
+	watchLifecycle(listener: (event: BackendLifecycleEvent) => void): () => void {
+		this.#lifecycleListeners.add(listener);
+		return () => this.#lifecycleListeners.delete(listener);
 	}
 
 	async #discoverDevices(): Promise<readonly AsusdDevice[]> {
 		this.#assertOpen();
+		if (!this.#available) throw new Error('asusd service is unavailable');
 		if (this.#devices) return this.#devices;
 
 		const devices = (await this.#transport.readManagedObjects())

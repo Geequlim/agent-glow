@@ -35,6 +35,10 @@ export interface BackendApplyResult {
 	readonly requested: StaticVisualState;
 }
 
+export type BackendLifecycleEvent =
+	| { readonly available: boolean; readonly type: 'availability' }
+	| { readonly sleeping: boolean; readonly type: 'sleep' };
+
 export interface LightingBackend {
 	readonly id: string;
 
@@ -45,5 +49,6 @@ export interface LightingBackend {
 	captureSnapshot(deviceId: string): Promise<BackendSnapshot>;
 	applyVisualState(deviceId: string, visualState: StaticVisualState): Promise<BackendApplyResult>;
 	restoreSnapshot(snapshot: BackendSnapshot): Promise<void>;
+	watchLifecycle?(listener: (event: BackendLifecycleEvent) => void): () => void;
 	close(): Promise<void>;
 }

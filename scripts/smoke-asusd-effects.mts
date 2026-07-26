@@ -19,8 +19,8 @@ const states = [
 		aura: '琥珀快呼吸',
 		slash: 'Buzzer 亮度 100%',
 	},
-	{ state: 'success', aura: '全亮绿色', slash: 'Slash 亮度 90%' },
-	{ state: 'error', aura: '全亮红色', slash: 'Hazard 亮度 100%' },
+	{ state: 'success', aura: '绿色单脉冲', slash: 'Slash 亮度 90%' },
+	{ state: 'error', aura: '红色双脉冲', slash: 'Hazard 亮度 100%' },
 ] as const;
 
 const confirmed =

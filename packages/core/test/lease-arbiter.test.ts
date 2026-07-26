@@ -1,7 +1,12 @@
 import type { AgentGlowEvent } from '@agent-glow/protocol/event';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_PULSE_TTL_MS, LeaseArbiter, type MonotonicClock } from '../src/lease-arbiter.js';
+import {
+	DEFAULT_PULSE_TTL_MS,
+	DEFAULT_STALE_LEASE_TTL_MS,
+	LeaseArbiter,
+	type MonotonicClock,
+} from '../src/lease-arbiter.js';
 
 class FakeClock implements MonotonicClock {
 	#now = 0;
@@ -51,6 +56,16 @@ describe('LeaseArbiter', () => {
 		arbiter.apply({ ...event('working', 'enter'), ttlMs: 10 });
 
 		clock.advance(10);
+
+		expect(arbiter.currentState()).toBe('idle');
+	});
+
+	it('reclaims an enter lease after the default stale timeout', () => {
+		const clock = new FakeClock();
+		const arbiter = new LeaseArbiter(clock);
+		arbiter.apply(event('working', 'enter'));
+
+		clock.advance(DEFAULT_STALE_LEASE_TTL_MS);
 
 		expect(arbiter.currentState()).toBe('idle');
 	});

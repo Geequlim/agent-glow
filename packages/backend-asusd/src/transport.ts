@@ -13,6 +13,10 @@ export interface ManagedObject {
 	readonly interfaces: readonly ManagedInterface[];
 }
 
+export type AsusdLifecycleEvent =
+	| { readonly available: boolean; readonly type: 'availability' }
+	| { readonly sleeping: boolean; readonly type: 'sleep' };
+
 export interface AsusdTransport {
 	readManagedObjects(): Promise<readonly ManagedObject[]>;
 	callMethod(path: string, interfaceName: string, methodName: string): Promise<unknown>;
@@ -23,5 +27,6 @@ export interface AsusdTransport {
 		propertyName: string,
 		property: DbusProperty,
 	): Promise<void>;
+	watchLifecycle?(listener: (event: AsusdLifecycleEvent) => void): () => void;
 	close(): void;
 }

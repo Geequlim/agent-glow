@@ -29,4 +29,19 @@ describe('semantic visual effects', () => {
 		expect(waiting.periodMs).toBeLessThan(working.periodMs);
 		expect(waiting.minimumIntensity).toBeLessThan(waiting.maximumIntensity);
 	});
+
+	it('renders success as one pulse and error as two pulses', () => {
+		const success = getSemanticVisualEffect('success');
+		const error = getSemanticVisualEffect('error');
+		if (success.effect !== 'pulse' || error.effect !== 'pulse') {
+			throw new Error('success and error must pulse');
+		}
+
+		expect(renderVisualFrame(success, success.durationMs / 2).intensity).toBeCloseTo(1);
+		expect(renderVisualFrame(success, success.durationMs).intensity).toBeCloseTo(
+			success.minimumIntensity,
+		);
+		expect(renderVisualFrame(error, error.durationMs / 4).intensity).toBeCloseTo(1);
+		expect(renderVisualFrame(error, (error.durationMs * 3) / 4).intensity).toBeCloseTo(1);
+	});
 });
